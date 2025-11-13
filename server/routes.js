@@ -6,6 +6,9 @@ import {
   listRecent,
   searchCompanies,
   createCompany,
+  getCompanyDetails,
+  updateCompany,
+  deleteCompany,
   lookupCompanyByCnpj,
 } from './controllers/companiesController.js';
 import { listPending, approvePending, rejectPending } from './controllers/pendingController.js';
@@ -57,6 +60,20 @@ router.post(
   authMiddleware,
   roleGuard('editor', 'admin'),
   asyncHandler(rejectPending)
+);
+
+router.get('/empresas/:id', authMiddleware, asyncHandler(getCompanyDetails));
+router.put(
+  '/empresas/:id',
+  authMiddleware,
+  roleGuard('editor', 'admin'),
+  asyncHandler(updateCompany)
+);
+router.delete(
+  '/empresas/:id',
+  authMiddleware,
+  roleGuard('editor', 'admin'),
+  asyncHandler(deleteCompany)
 );
 
 router.get('/settings', authMiddleware, asyncHandler(getSettings));
