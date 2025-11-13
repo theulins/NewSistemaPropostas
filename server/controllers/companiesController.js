@@ -18,6 +18,46 @@ function ensureUploadsDir() {
   }
 }
 
+async function findCompanyById(id) {
+  const [rows] = await pool.query('SELECT * FROM companies WHERE id = ? LIMIT 1', [id]);
+  return rows[0] || null;
+}
+
+function removeSignatureFile(signatureUrl) {
+  if (!signatureUrl) return;
+  const cleaned = signatureUrl.replace(/^\/uploads\//, '');
+  const filepath = path.join(uploadsDir, cleaned);
+  const normalized = path.normalize(filepath);
+  if (!normalized.startsWith(path.normalize(uploadsDir))) {
+    return;
+  }
+  try {
+    fs.unlinkSync(normalized);
+  } catch (error) {
+    if (error.code !== 'ENOENT') {
+      console.warn('Não foi possível remover a assinatura antiga:', error.message);
+    }
+  }
+}
+
+function pickNullableString(value, fallback) {
+  if (value === undefined) return fallback;
+  return nullIfEmpty(value);
+}
+
+function pickDigits(value, fallback) {
+  if (value === undefined) return fallback;
+  const digits = digitsOnly(value);
+  return nullIfEmpty(digits);
+}
+
+function pickNullableNumber(value, fallback) {
+  if (value === undefined) return fallback;
+  if (value === '' || value === null) return null;
+  const number = Number(value);
+  return Number.isNaN(number) ? null : number;
+}
+
 export const listRecent = async (_req, res) => {
   const [rows] = await pool.query(
     `SELECT id, fantasy_name, cnpj, city, state, sector, status, updated_at
@@ -137,6 +177,9 @@ export const createCompany = async (req, res) => {
   if (!fantasy_name) {
     return res.status(400).json({ message: 'Nome fantasia é obrigatório.' });
   }
+  if (!signature_data_url) {
+    return res.status(400).json({ message: 'Assinatura digital é obrigatória.' });
+  }
 
   const sanitizedCnpj = digitsOnly(cnpj);
   const sanitizedZip = digitsOnly(zip);
@@ -145,6 +188,9 @@ export const createCompany = async (req, res) => {
   const sanitizedWhatsapp = digitsOnly(whatsapp);
 
   const signature_url = storeSignature(signature_data_url);
+  if (!signature_url) {
+    return res.status(400).json({ message: 'Assinatura digital inválida.' });
+  }
 
   const [result] = await pool.query(
     `INSERT INTO companies (
@@ -184,7 +230,156 @@ export const createCompany = async (req, res) => {
     ]
   );
 
-  res.status(201).json({ id: result.insertId, message: 'Empresa criada com sucesso.' });
+  const created = await findCompanyById(result.insertId);
+  res.status(201).json({ data: created, message: 'Empresa criada com sucesso.' });
+};
+
+export const getCompanyDetails = async (req, res) => {
+  const companyId = Number(req.params.id);
+  if (!Number.isInteger(companyId)) {
+    return res.status(400).json({ message: 'Identificador inválido.' });
+  }
+  const company = await findCompanyById(companyId);
+  if (!company) {
+    return res.status(404).json({ message: 'Empresa não encontrada.' });
+  }
+  res.json({ data: company });
+};
+
+export const updateCompany = async (req, res) => {
+  const companyId = Number(req.params.id);
+  if (!Number.isInteger(companyId)) {
+    return res.status(400).json({ message: 'Identificador inválido.' });
+  }
+
+  const existing = await findCompanyById(companyId);
+  if (!existing) {
+    return res.status(404).json({ message: 'Empresa não encontrada.' });
+  }
+
+  const {
+    fantasy_name,
+    corporate_name,
+    cnpj,
+    ie,
+    address,
+    zip,
+    city,
+    state,
+    phone,
+    cel,
+    whatsapp,
+    email,
+    instagram,
+    business_activity,
+    foundation_date,
+    employees_qty,
+    sector,
+    accounting_office,
+    referred_by,
+    note,
+    plan_type,
+    value,
+    commission_rate,
+    commission_exempt,
+    due_date,
+    signature_data_url,
+  } = req.body;
+
+  const sanitizedCnpj = pickDigits(cnpj, existing.cnpj);
+  const sanitizedZip = pickDigits(zip, existing.zip);
+  const sanitizedPhone = pickDigits(phone, existing.phone);
+  const sanitizedCel = pickDigits(cel, existing.cel);
+  const sanitizedWhatsapp = pickDigits(whatsapp, existing.whatsapp);
+
+  let signatureUrl = existing.signature_url;
+  if (signature_data_url) {
+    const newSignature = storeSignature(signature_data_url);
+    if (!newSignature) {
+      return res.status(400).json({ message: 'Assinatura digital inválida.' });
+    }
+    removeSignatureFile(existing.signature_url);
+    signatureUrl = newSignature;
+  }
+
+  await pool.query(
+    `UPDATE companies SET
+      fantasy_name = ?,
+      corporate_name = ?,
+      cnpj = ?,
+      ie = ?,
+      address = ?,
+      zip = ?,
+      city = ?,
+      state = ?,
+      phone = ?,
+      cel = ?,
+      whatsapp = ?,
+      email = ?,
+      instagram = ?,
+      business_activity = ?,
+      foundation_date = ?,
+      employees_qty = ?,
+      sector = ?,
+      accounting_office = ?,
+      referred_by = ?,
+      note = ?,
+      plan_type = ?,
+      value = ?,
+      commission_rate = ?,
+      commission_exempt = ?,
+      due_date = ?,
+      signature_url = ?,
+      updated_by = ?
+    WHERE id = ?`,
+    [
+      pickNullableString(fantasy_name, existing.fantasy_name),
+      pickNullableString(corporate_name, existing.corporate_name),
+      sanitizedCnpj,
+      pickNullableString(ie, existing.ie),
+      pickNullableString(address, existing.address),
+      sanitizedZip,
+      pickNullableString(city, existing.city),
+      pickNullableString(state, existing.state),
+      sanitizedPhone,
+      sanitizedCel,
+      sanitizedWhatsapp,
+      pickNullableString(email, existing.email),
+      pickNullableString(instagram, existing.instagram),
+      pickNullableString(business_activity, existing.business_activity),
+      pickNullableString(foundation_date, existing.foundation_date),
+      pickNullableNumber(employees_qty, existing.employees_qty),
+      pickNullableString(sector, existing.sector),
+      pickNullableString(accounting_office, existing.accounting_office),
+      pickNullableString(referred_by, existing.referred_by),
+      pickNullableString(note, existing.note),
+      pickNullableString(plan_type, existing.plan_type),
+      pickNullableNumber(value, existing.value),
+      pickNullableNumber(commission_rate, existing.commission_rate),
+      commission_exempt === undefined ? existing.commission_exempt : Number(commission_exempt) ? 1 : 0,
+      pickNullableString(due_date, existing.due_date),
+      signatureUrl,
+      req.user?.id || null,
+      companyId,
+    ]
+  );
+
+  const updated = await findCompanyById(companyId);
+  res.json({ data: updated, message: 'Empresa atualizada com sucesso.' });
+};
+
+export const deleteCompany = async (req, res) => {
+  const companyId = Number(req.params.id);
+  if (!Number.isInteger(companyId)) {
+    return res.status(400).json({ message: 'Identificador inválido.' });
+  }
+  const existing = await findCompanyById(companyId);
+  if (!existing) {
+    return res.status(404).json({ message: 'Empresa não encontrada.' });
+  }
+  await pool.query('DELETE FROM companies WHERE id = ?', [companyId]);
+  removeSignatureFile(existing.signature_url);
+  res.json({ message: 'Empresa excluída com sucesso.' });
 };
 
 export const lookupCompanyByCnpj = async (req, res) => {
