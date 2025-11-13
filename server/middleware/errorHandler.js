@@ -1,4 +1,5 @@
 export function errorHandler(err, req, res, _next) {
+  void _next;
   const status = err.status || 500;
   if (status >= 500) {
     console.error('Erro inesperado:', err);

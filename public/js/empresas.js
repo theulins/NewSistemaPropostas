@@ -9,10 +9,18 @@ const companyForm = document.getElementById('company-form');
 const signaturePad = document.getElementById('signature-pad');
 const signatureDataInput = document.getElementById('signature-data');
 const clearSignature = document.getElementById('clear-signature');
+const exportPdfBtn = document.getElementById('export-pdf');
+const cnpjLookupBtn = document.getElementById('cnpj-lookup-btn');
+const cnpjLookupStatus = document.getElementById('cnpj-lookup-status');
 
 let ctx;
 let drawing = false;
 let profile;
+let activeFilters = {};
+
+function digitsOnly(value = '') {
+  return value.replace(/\D+/g, '');
+}
 
 function formatDate(value) {
   if (!value) return '-';
@@ -24,8 +32,15 @@ function formatStatus(status) {
   return status[0].toUpperCase() + status.slice(1);
 }
 
+function sanitizeFilters(params = {}) {
+  return Object.fromEntries(
+    Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== '')
+  );
+}
+
 async function loadCompanies(params = {}) {
-  const query = new URLSearchParams(params);
+  activeFilters = sanitizeFilters(params);
+  const query = new URLSearchParams(activeFilters);
   const endpoint = query.toString() ? `/empresas/search?${query}` : '/empresas/list';
   const data = await authFetch(endpoint);
   companiesTable.innerHTML = data.items
@@ -149,6 +164,143 @@ function preparePayload(formData) {
   return payload;
 }
 
+function buildFilterSummary() {
+  const summary = [];
+  if (activeFilters.q) {
+    summary.push(`Busca: ${activeFilters.q}`);
+  }
+  if (activeFilters.status) {
+    summary.push(`Status: ${activeFilters.status}`);
+  }
+  return summary.join(' • ');
+}
+
+function exportTableToPdf() {
+  const rows = Array.from(companiesTable.querySelectorAll('tr'));
+  if (!rows.length) {
+    showError('Não há dados para exportar. Faça uma busca antes.');
+    return;
+  }
+  if (!window.jspdf?.jsPDF) {
+    showError('Biblioteca de PDF não carregada. Verifique sua conexão.');
+    return;
+  }
+
+  const doc = new window.jspdf.jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+  const margin = 12;
+  const columns = [
+    { width: 15 },
+    { width: 65 },
+    { width: 45 },
+    { width: 35 },
+    { width: 12 },
+    { width: 32 },
+    { width: 30 },
+    { width: 39 },
+  ];
+  const usableWidth = columns.reduce((total, col) => total + col.width, 0);
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const headerLabels = ['ID', 'Nome fantasia', 'CNPJ', 'Cidade', 'UF', 'Setor', 'Status', 'Atualizado'];
+  const filterSummary = buildFilterSummary();
+
+  doc.setFontSize(16);
+  doc.text('Empresas cadastradas', margin, margin);
+  doc.setFontSize(10);
+  doc.text(`Emitido em ${new Date().toLocaleString('pt-BR')}`, margin, margin + 6);
+  if (filterSummary) {
+    doc.text(`Filtros: ${filterSummary}`, margin, margin + 12, { maxWidth: usableWidth });
+  }
+
+  let cursorY = margin + (filterSummary ? 20 : 16);
+
+  const drawRow = (values, { header = false } = {}) => {
+    doc.setFont('helvetica', header ? 'bold' : 'normal');
+    const processed = values.map((value, index) => {
+      const content = value || '—';
+      const width = columns[index].width - 2;
+      return doc.splitTextToSize(content, width);
+    });
+    const lineHeight = header ? 6 : 5;
+    const rowHeight = Math.max(...processed.map((lines) => lines.length)) * lineHeight + 2;
+    if (!header && cursorY + rowHeight > pageHeight - margin) {
+      doc.addPage();
+      cursorY = margin;
+      drawRow(headerLabels, { header: true });
+    }
+    let cursorX = margin;
+    processed.forEach((lines, index) => {
+      doc.text(lines, cursorX, cursorY, { baseline: 'top' });
+      cursorX += columns[index].width;
+    });
+    doc.setDrawColor(180);
+    doc.line(margin, cursorY + rowHeight, margin + usableWidth, cursorY + rowHeight);
+    cursorY += rowHeight + 2;
+  };
+
+  drawRow(headerLabels, { header: true });
+  rows.forEach((row) => {
+    const values = Array.from(row.children).map((cell) => cell.textContent.trim());
+    drawRow(values);
+  });
+
+  const filename = `empresas-${new Date().toISOString().slice(0, 10)}.pdf`;
+  doc.save(filename);
+}
+
+async function lookupCnpj() {
+  if (!companyForm) return;
+  const cnpjField = companyForm.elements.cnpj;
+  if (!cnpjField) return;
+  const digits = digitsOnly(cnpjField.value || '');
+  if (digits.length !== 14) {
+    showError('Informe um CNPJ válido com 14 dígitos.');
+    return;
+  }
+  cnpjLookupBtn.disabled = true;
+  cnpjLookupBtn.textContent = 'Buscando...';
+  if (cnpjLookupStatus) {
+    cnpjLookupStatus.textContent = 'Consultando a base da Receita Federal...';
+  }
+  try {
+    const response = await authFetch(`/empresas/cnpj/${digits}`);
+    const data = response.data || {};
+    const mapping = {
+      fantasy_name: 'fantasy_name',
+      corporate_name: 'corporate_name',
+      cnpj: 'cnpj',
+      ie: 'ie',
+      address: 'address',
+      zip: 'zip',
+      city: 'city',
+      state: 'state',
+      email: 'email',
+      phone: 'phone',
+      business_activity: 'business_activity',
+      sector: 'sector',
+      foundation_date: 'foundation_date',
+    };
+    Object.entries(mapping).forEach(([source, target]) => {
+      if (data[source] !== undefined && companyForm.elements[target]) {
+        companyForm.elements[target].value = data[source] || '';
+      }
+    });
+    if (companyForm.elements.state && companyForm.elements.state.value) {
+      companyForm.elements.state.value = companyForm.elements.state.value.toUpperCase();
+    }
+    if (cnpjLookupStatus) {
+      cnpjLookupStatus.textContent = 'Dados preenchidos automaticamente.';
+    }
+  } catch (error) {
+    if (cnpjLookupStatus) {
+      cnpjLookupStatus.textContent = '';
+    }
+    showError(error.message);
+  } finally {
+    cnpjLookupBtn.disabled = false;
+    cnpjLookupBtn.textContent = 'Buscar dados pelo CNPJ';
+  }
+}
+
 async function init() {
   const context = await initializePage('empresas');
   if (!context) return;
@@ -179,10 +331,18 @@ async function init() {
   searchForm.addEventListener('submit', async (event) => {
     event.preventDefault();
     const formData = new FormData(searchForm);
-    const params = Object.fromEntries(formData.entries());
+    const params = {};
+    formData.forEach((value, key) => {
+      if (value) {
+        params[key] = value;
+      }
+    });
     await loadCompanies(params);
     showView('lista');
   });
+
+  exportPdfBtn?.addEventListener('click', exportTableToPdf);
+  cnpjLookupBtn?.addEventListener('click', lookupCnpj);
 
   companyForm.addEventListener('submit', async (event) => {
     event.preventDefault();
