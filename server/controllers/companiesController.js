@@ -144,6 +144,19 @@ export const createCompany = async (req, res) => {
   const sanitizedCel = digitsOnly(cel);
   const sanitizedWhatsapp = digitsOnly(whatsapp);
 
+  if (sanitizedCnpj) {
+    const [existing] = await pool.query(
+      'SELECT id, fantasy_name, corporate_name FROM companies WHERE cnpj = ? LIMIT 1',
+      [sanitizedCnpj]
+    );
+    if (existing.length) {
+      const existingName = existing[0].fantasy_name || existing[0].corporate_name || `ID ${existing[0].id}`;
+      return res
+        .status(409)
+        .json({ message: `Já existe uma empresa cadastrada com este CNPJ (${existingName}).` });
+    }
+  }
+
   const signature_url = storeSignature(signature_data_url);
 
   const [result] = await pool.query(

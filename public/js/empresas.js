@@ -6,6 +6,7 @@ const formSection = document.getElementById('form-section');
 const listSection = document.getElementById('list-section');
 const toggleButtons = document.querySelectorAll('.toggle-group button');
 const companyForm = document.getElementById('company-form');
+const cnpjField = companyForm?.elements?.cnpj || null;
 const signaturePad = document.getElementById('signature-pad');
 const signatureDataInput = document.getElementById('signature-data');
 const clearSignature = document.getElementById('clear-signature');
@@ -17,6 +18,7 @@ let ctx;
 let drawing = false;
 let profile;
 let activeFilters = {};
+const COMPANIES_TABLE_COLUMNS = 9;
 const PLAN_LABELS = {
   mensal: 'Mensal',
   trimestral: 'Trimestral',
@@ -123,32 +125,74 @@ function sanitizeFilters(params = {}) {
   );
 }
 
+function renderTableMessage(message, className = 'placeholder') {
+  if (!companiesTable) return;
+  companiesTable.innerHTML = `
+    <tr class="${className}">
+      <td colspan="${COMPANIES_TABLE_COLUMNS}">${message}</td>
+    </tr>
+  `;
+}
+
+function isPlaceholderRow(row) {
+  return row.classList.contains('placeholder') || row.classList.contains('error-row');
+}
+
+function clearCnpjError() {
+  if (!cnpjField) return;
+  cnpjField.classList.remove('input-error');
+  cnpjField.setCustomValidity('');
+}
+
+function flagCnpjError(message) {
+  if (!cnpjField) return;
+  cnpjField.classList.add('input-error');
+  cnpjField.setCustomValidity(message || '');
+  cnpjField.reportValidity();
+}
+
+cnpjField?.addEventListener('input', clearCnpjError);
+
 async function loadCompanies(params = {}) {
+  if (!companiesTable) return;
   activeFilters = sanitizeFilters(params);
   const query = new URLSearchParams(activeFilters);
   const endpoint = query.toString() ? `/empresas/search?${query}` : '/empresas/list';
-  const data = await authFetch(endpoint);
-  companiesTable.innerHTML = data.items
-    .map(
-      (item) => `
-        <tr>
-          <td>${item.id}</td>
-          <td>${item.fantasy_name || '—'}</td>
-          <td>${item.cnpj || '—'}</td>
-          <td>${item.city || '—'}</td>
-          <td>${item.state || '—'}</td>
-          <td>${item.sector || '—'}</td>
-          <td>${formatStatus(item.status)}</td>
-          <td>${formatDate(item.updated_at)}</td>
-          <td>
-            <button type="button" class="ghost export-proposal" data-company-id="${item.id}">
-              Exportar proposta
-            </button>
-          </td>
-        </tr>
-      `
-    )
-    .join('');
+  if (!companiesTable.children.length) {
+    renderTableMessage('Carregando empresas...');
+  }
+  try {
+    const data = await authFetch(endpoint);
+    const items = Array.isArray(data.items) ? data.items : [];
+    if (!items.length) {
+      renderTableMessage('Nenhuma empresa encontrada para os filtros informados.');
+      return;
+    }
+    companiesTable.innerHTML = items
+      .map(
+        (item) => `
+          <tr>
+            <td>${item.id}</td>
+            <td>${item.fantasy_name || '—'}</td>
+            <td>${item.cnpj || '—'}</td>
+            <td>${item.city || '—'}</td>
+            <td>${item.state || '—'}</td>
+            <td>${item.sector || '—'}</td>
+            <td>${formatStatus(item.status)}</td>
+            <td>${formatDate(item.updated_at)}</td>
+            <td>
+              <button type="button" class="ghost export-proposal" data-company-id="${item.id}">
+                Exportar proposta
+              </button>
+            </td>
+          </tr>
+        `
+      )
+      .join('');
+  } catch (error) {
+    renderTableMessage('Não foi possível carregar as empresas no momento.', 'error-row');
+    showError(error.message || 'Erro ao carregar empresas.');
+  }
 }
 
 function showView(view) {
@@ -307,7 +351,7 @@ function buildFilterSummary() {
 }
 
 function exportTableToPdf() {
-  const rows = Array.from(companiesTable.querySelectorAll('tr'));
+  const rows = Array.from(companiesTable.querySelectorAll('tr')).filter((row) => !isPlaceholderRow(row));
   if (!rows.length) {
     showError('Não há dados para exportar. Faça uma busca antes.');
     return;
@@ -630,6 +674,7 @@ async function lookupCnpj() {
     if (companyForm.elements.state && companyForm.elements.state.value) {
       companyForm.elements.state.value = companyForm.elements.state.value.toUpperCase();
     }
+    clearCnpjError();
     if (cnpjLookupStatus) {
       cnpjLookupStatus.textContent = 'Dados preenchidos automaticamente.';
     }
@@ -704,6 +749,7 @@ async function init() {
     }
     const payload = preparePayload(formData);
     try {
+      clearCnpjError();
       await authFetch('/empresas', {
         method: 'POST',
         body: JSON.stringify(payload),
@@ -711,10 +757,14 @@ async function init() {
       showSuccess('Empresa cadastrada com sucesso.');
       companyForm.reset();
       clearSignaturePad();
+      clearCnpjError();
       await loadCompanies();
       showView('lista');
     } catch (error) {
       showError(error.message);
+      if (/CNPJ/i.test(error.message || '')) {
+        flagCnpjError(error.message);
+      }
     }
   });
 }
