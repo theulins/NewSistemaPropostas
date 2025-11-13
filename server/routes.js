@@ -1,8 +1,13 @@
 import express from 'express';
-import rateLimit from 'express-rate-limit';
+import expressRateLimit from 'express-rate-limit';
 import { login, profile } from './controllers/authController.js';
 import { getSummary, getCommissions } from './controllers/dashboardController.js';
-import { listRecent, searchCompanies, createCompany } from './controllers/companiesController.js';
+import {
+  listRecent,
+  searchCompanies,
+  createCompany,
+  lookupCompanyByCnpj,
+} from './controllers/companiesController.js';
 import { listPending, approvePending, rejectPending } from './controllers/pendingController.js';
 import { getSettings, updateSettings } from './controllers/settingsController.js';
 import { listUsers, createUser, updateUser, deleteUser } from './controllers/usersController.js';
@@ -12,7 +17,7 @@ import { asyncHandler } from './utils/asyncHandler.js';
 
 const router = express.Router();
 
-const loginLimiter = rateLimit({
+const loginLimiter = expressRateLimit({
   windowMs: 15 * 60 * 1000,
   max: 20,
   standardHeaders: 'draft-7',
@@ -32,6 +37,12 @@ router.get('/dashboard/commissions', authMiddleware, asyncHandler(getCommissions
 router.get('/empresas/list', authMiddleware, asyncHandler(listRecent));
 router.get('/empresas/search', authMiddleware, asyncHandler(searchCompanies));
 router.post('/empresas', authMiddleware, roleGuard('editor', 'admin'), asyncHandler(createCompany));
+router.get(
+  '/empresas/cnpj/:cnpj',
+  authMiddleware,
+  roleGuard('editor', 'admin'),
+  asyncHandler(lookupCompanyByCnpj)
+);
 
 router.get('/empresas/pending', authMiddleware, asyncHandler(listPending));
 router.get('/empresas/pending/search', authMiddleware, asyncHandler(listPending));

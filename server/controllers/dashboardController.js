@@ -34,13 +34,18 @@ export const getCommissions = async (req, res) => {
   const year = monthDate.getUTCFullYear();
   const monthIndex = monthDate.getUTCMonth() + 1;
 
-  const [commissionRows] = await pool.query(
-    `SELECT IFNULL(SUM(value),0) AS totalValue, AVG(commission_rate) AS avgRate
-     FROM companies
-     WHERE status = 'ativo'
-       AND approved_at IS NOT NULL
-       AND YEAR(approved_at) = ?
-       AND MONTH(approved_at) = ?`,
+  const [commissionStatsRows] = await pool.query(
+    `SELECT
+        IFNULL(SUM(value),0) AS totalValue,
+        IFNULL(SUM(CASE WHEN commission_rate IS NOT NULL THEN value * commission_rate ELSE 0 END),0) AS totalCommission,
+        AVG(commission_rate) AS avgRate,
+        COUNT(*) AS totalApproved
+      FROM companies
+      WHERE status = 'ativo'
+        AND approved_at IS NOT NULL
+        AND commission_exempt = 0
+        AND YEAR(approved_at) = ?
+        AND MONTH(approved_at) = ?`,
     [year, monthIndex]
   );
 
@@ -48,13 +53,25 @@ export const getCommissions = async (req, res) => {
     "SELECT CAST(value AS DECIMAL(6,4)) AS defaultRate FROM settings WHERE `key` = 'default_commission_rate'"
   );
 
-  const totalValue = Number(commissionRows.totalValue || 0);
+  const stats = commissionStatsRows[0] || {};
+  const totalValue = Number(stats.totalValue || 0);
+  const approvedCommission = Number(stats.totalCommission || 0);
+  const approvedCompanies = Number(stats.totalApproved || 0);
   const defaultRate = settingsRow ? settingsRow.defaultRate : null;
-  const rateToUse = defaultRate ?? Number(commissionRows.avgRate || 0);
+  const fallbackRate = defaultRate ?? Number(stats.avgRate || 0);
+  const approvedRate = totalValue > 0 && approvedCommission > 0
+    ? Number((approvedCommission / totalValue).toFixed(4))
+    : null;
+  const estimatedCommission = fallbackRate
+    ? Number((totalValue * fallbackRate).toFixed(2))
+    : 0;
 
   return res.json({
     totalValue,
     defaultRate: defaultRate !== null ? Number(defaultRate) : undefined,
-    commission: rateToUse ? Number((totalValue * rateToUse).toFixed(2)) : 0,
+    commission: estimatedCommission,
+    approvedCommission,
+    approvedCompanies,
+    approvedRate,
   });
 };
