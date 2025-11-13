@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard • Sistema de Propostas</title>
+  <link rel="stylesheet" href="css/dashboard.css">
+</head>
+<body>
+  <header class="topbar">
+    <span class="brand">Sistema de Propostas</span>
+    <nav class="tabs" aria-label="Seções principais">
+      <a class="tab" data-page="dashboard" href="dashboard.html">Dashboard</a>
+      <a class="tab" data-page="empresas" href="empresas.html">Empresas</a>
+      <a class="tab" data-page="pendencias" href="pendencias.html">Pendências</a>
+      <a class="tab" data-page="configuracoes" href="configuracoes.html">Configurações</a>
+    </nav>
+    <div class="userbox">
+      <span id="user-name" aria-live="polite"></span>
+      <button class="ghost" id="logout-btn">Sair</button>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="panel">
+      <header class="card-header">
+        <h2>Indicadores</h2>
+      </header>
+      <div class="kpi-grid" id="kpi-grid" aria-live="polite"></div>
+    </section>
+
+    <section class="panel" aria-labelledby="recent-title">
+      <div class="card-header">
+        <h2 id="recent-title">Últimas edições</h2>
+      </div>
+      <div class="list-table">
+        <table>
+          <thead>
+            <tr>
+              <th>Empresa</th>
+              <th>Atualizado por</th>
+              <th>Atualizado em</th>
+            </tr>
+          </thead>
+          <tbody id="recent-list"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel" aria-labelledby="commissions-title">
+      <div class="card-header">
+        <div>
+          <h2 id="commissions-title">Comissões do mês</h2>
+          <p class="notice">Base calculada a partir das aprovações do período.</p>
+        </div>
+        <div class="flex-controls" style="display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end; width:100%; max-width:360px;">
+          <input type="month" id="month-input" aria-label="Mês de referência">
+          <button class="ghost" id="month-apply">Aplicar</button>
+        </div>
+      </div>
+      <div id="commission-card"></div>
+    </section>
+  </main>
+
+  <script type="module" src="js/dashboard.js"></script>
+</body>
+</html>

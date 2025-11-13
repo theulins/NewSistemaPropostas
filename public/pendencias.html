@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pendências • Sistema de Propostas</title>
+  <link rel="stylesheet" href="css/pendencias.css">
+</head>
+<body>
+  <header class="topbar">
+    <span class="brand">Sistema de Propostas</span>
+    <nav class="tabs" aria-label="Seções principais">
+      <a class="tab" data-page="dashboard" href="dashboard.html">Dashboard</a>
+      <a class="tab" data-page="empresas" href="empresas.html">Empresas</a>
+      <a class="tab" data-page="pendencias" href="pendencias.html">Pendências</a>
+      <a class="tab" data-page="configuracoes" href="configuracoes.html">Configurações</a>
+    </nav>
+    <div class="userbox">
+      <span id="user-name" aria-live="polite"></span>
+      <button class="ghost" id="logout-btn">Sair</button>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="panel">
+      <header class="card-header">
+        <h2>Pendências de aprovação</h2>
+      </header>
+      <form id="pending-filter" class="filters">
+        <label>
+          <span>Busca</span>
+          <input type="search" name="q" placeholder="Nome, CNPJ ou cidade">
+        </label>
+        <label>
+          <span>Status</span>
+          <select name="status">
+            <option value="pendente">Pendentes</option>
+            <option value="ativo">Aprovadas</option>
+            <option value="reprovado">Reprovadas</option>
+          </select>
+        </label>
+        <button type="submit" class="primary">Filtrar</button>
+      </form>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Empresa</th>
+              <th>CNPJ</th>
+              <th>Cidade</th>
+              <th>Plano</th>
+              <th>Valor (R$)</th>
+              <th>Taxa (%)</th>
+              <th>Comissão (R$)</th>
+              <th>Vencimento</th>
+              <th>Ações</th>
+            </tr>
+          </thead>
+          <tbody id="pending-table"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <script type="module" src="js/pendencias.js"></script>
+</body>
+</html>

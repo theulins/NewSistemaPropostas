@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Empresas • Sistema de Propostas</title>
+  <link rel="stylesheet" href="css/empresas.css">
+</head>
+<body>
+  <header class="topbar">
+    <span class="brand">Sistema de Propostas</span>
+    <nav class="tabs" aria-label="Seções principais">
+      <a class="tab" data-page="dashboard" href="dashboard.html">Dashboard</a>
+      <a class="tab" data-page="empresas" href="empresas.html">Empresas</a>
+      <a class="tab" data-page="pendencias" href="pendencias.html">Pendências</a>
+      <a class="tab" data-page="configuracoes" href="configuracoes.html">Configurações</a>
+    </nav>
+    <div class="userbox">
+      <span id="user-name" aria-live="polite"></span>
+      <button class="ghost" id="logout-btn">Sair</button>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="page-actions grid2">
+      <article class="panel">
+        <h2>Pesquisar Empresas</h2>
+        <form id="search-form" class="grid2">
+          <label>
+            <span>Busca</span>
+            <input type="search" name="q" placeholder="Nome, CNPJ ou cidade">
+          </label>
+          <label>
+            <span>Status</span>
+            <select name="status">
+              <option value="">Todos</option>
+              <option value="pendente">Pendente</option>
+              <option value="ativo">Ativo</option>
+              <option value="reprovado">Reprovado</option>
+            </select>
+          </label>
+          <button type="submit" class="primary">Buscar</button>
+        </form>
+      </article>
+      <article class="panel">
+        <h2>Nova Empresa</h2>
+        <div class="toggle-group" role="group" aria-label="Exibição">
+          <button class="ghost" data-view="lista">Ver lista</button>
+          <button class="primary" data-view="form">+ Nova empresa</button>
+        </div>
+      </article>
+    </section>
+<br>
+    <section id="list-section" class="panel" aria-labelledby="lista-title">
+      <header class="card-header">
+        <h2 id="lista-title">Empresas cadastradas</h2>
+      </header>
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Nome fantasia</th>
+              <th>CNPJ</th>
+              <th>Cidade</th>
+              <th>UF</th>
+              <th>Setor</th>
+              <th>Status</th>
+              <th>Atualizado</th>
+            </tr>
+          </thead>
+          <tbody id="companies-table"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="form-section" class="panel" hidden aria-labelledby="form-title">
+      <header class="card-header">
+        <h2 id="form-title">Cadastrar nova empresa</h2>
+      </header>
+      <form id="company-form" class="form-section">
+        <fieldset>
+          <legend>Identificação</legend>
+          <div class="flex">
+            <label><span>Nome fantasia</span><input name="fantasy_name" required></label>
+            <label><span>Razão social</span><input name="corporate_name"></label>
+          </div>
+          <div class="flex">
+            <label><span>CNPJ</span><input name="cnpj" maxlength="18"></label>
+            <label><span>Inscrição Estadual</span><input name="ie"></label>
+          </div>
+          <div class="flex">
+            <label><span>Setor</span><input name="sector"></label>
+            <label><span>Atividade</span><input name="business_activity"></label>
+            <label><span>Funcionários</span><input type="number" name="employees_qty" min="0"></label>
+          </div>
+          <div class="flex">
+            <label><span>Data de fundação</span><input type="date" name="foundation_date"></label>
+            <label><span>Contabilidade</span><input name="accounting_office"></label>
+            <label><span>Indicação</span><input name="referred_by"></label>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Contatos</legend>
+          <div class="flex">
+            <label><span>E-mail</span><input type="email" name="email"></label>
+            <label><span>Telefone</span><input name="phone" inputmode="tel"></label>
+            <label><span>Celular</span><input name="cel" inputmode="tel"></label>
+          </div>
+          <div class="flex">
+            <label><span>WhatsApp</span><input name="whatsapp" inputmode="tel"></label>
+            <label><span>Instagram</span><input name="instagram"></label>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Endereço</legend>
+          <div class="flex">
+            <label><span>CEP</span><input name="zip" inputmode="numeric" maxlength="9"></label>
+            <label><span>Endereço</span><input name="address"></label>
+          </div>
+          <div class="flex">
+            <label><span>Cidade</span><input name="city"></label>
+            <label><span>Estado</span><input name="state" maxlength="2"></label>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Financeiro</legend>
+          <div class="flex">
+            <label>
+              <span>Plano</span>
+              <select name="plan_type">
+                <option value="">Selecionar</option>
+                <option value="mensal">Mensal</option>
+                <option value="trimestral">Trimestral</option>
+                <option value="semestral">Semestral</option>
+                <option value="anual">Anual</option>
+              </select>
+            </label>
+            <label><span>Valor (R$)</span><input type="number" step="0.01" name="value" min="0"></label>
+            <label><span>Taxa de comissão (%)</span><input type="number" step="0.01" name="commission_rate" min="0" max="100"></label>
+          </div>
+          <div class="flex">
+            <label><span>Vencimento</span><input type="date" name="due_date"></label>
+            <label><span>Isenção de comissão</span><input type="checkbox" name="commission_exempt"></label>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Observações e assinatura</legend>
+          <label><span>Observações</span><textarea name="note" rows="3"></textarea></label>
+          <div class="canvas-box">
+            <span>Assinatura digital</span>
+            <canvas class="signature" id="signature-pad" aria-label="Área para desenhar assinatura"></canvas>
+            <div class="signature-actions">
+              <button type="button" class="ghost" id="clear-signature">Limpar</button>
+            </div>
+            <input type="hidden" name="signature_data_url" id="signature-data">
+          </div>
+        </fieldset>
+
+        <button type="submit" class="primary">Salvar empresa</button>
+      </form>
+    </section>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <script type="module" src="js/empresas.js"></script>
+</body>
+</html>

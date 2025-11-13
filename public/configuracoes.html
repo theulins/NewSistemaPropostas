@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Configurações • Sistema de Propostas</title>
+  <link rel="stylesheet" href="css/configuracoes.css">
+</head>
+<body>
+  <header class="topbar">
+    <span class="brand">Sistema de Propostas</span>
+    <nav class="tabs" aria-label="Seções principais">
+      <a class="tab" data-page="dashboard" href="dashboard.html">Dashboard</a>
+      <a class="tab" data-page="empresas" href="empresas.html">Empresas</a>
+      <a class="tab" data-page="pendencias" href="pendencias.html">Pendências</a>
+      <a class="tab" data-page="configuracoes" href="configuracoes.html">Configurações</a>
+    </nav>
+    <div class="userbox">
+      <span id="user-name" aria-live="polite"></span>
+      <button class="ghost" id="logout-btn">Sair</button>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="preferences-grid">
+      <article class="panel" aria-labelledby="design-title">
+        <header class="card-header">
+          <h2 id="design-title">Preferências de Design</h2>
+        </header>
+        <form id="design-form" class="form-inline">
+          <div class="row">
+            <label>
+              <span>Tema</span>
+              <select name="theme_preference">
+                <option value="system">Automático</option>
+                <option value="light">Claro</option>
+                <option value="dark">Escuro</option>
+              </select>
+            </label>
+            <label>
+              <span>Cor primária</span>
+              <input type="color" name="primary" value="#4f86ff">
+            </label>
+          </div>
+          <div class="preview" aria-hidden="true"></div>
+          <div class="signature-actions">
+            <button type="submit" class="primary">Salvar preferências</button>
+            <button type="button" class="ghost" id="reset-design">Restaurar padrão</button>
+          </div>
+        </form>
+      </article>
+
+      <article class="panel" id="users-panel" aria-labelledby="users-title" hidden>
+        <header class="card-header">
+          <div>
+            <h2 id="users-title">Usuários</h2>
+            <p class="notice">Somente administradores podem gerenciar usuários.</p>
+          </div>
+        </header>
+        <form id="user-form" class="form-inline">
+          <input type="hidden" name="id">
+          <div class="row">
+            <label><span>Nome</span><input name="name" required></label>
+            <label><span>E-mail</span><input type="email" name="email" required></label>
+          </div>
+          <div class="row">
+            <label>
+              <span>Perfil</span>
+              <select name="role" required>
+                <option value="viewer">Visualizador</option>
+                <option value="editor">Editor</option>
+                <option value="admin">Administrador</option>
+              </select>
+            </label>
+            <label>
+              <span>Tema preferido</span>
+              <select name="theme_preference">
+                <option value="system">Automático</option>
+                <option value="light">Claro</option>
+                <option value="dark">Escuro</option>
+              </select>
+            </label>
+            <label id="password-wrapper"><span>Senha</span><input type="password" name="password" required></label>
+          </div>
+          <div class="signature-actions">
+            <button type="submit" class="primary" id="save-user">Salvar usuário</button>
+            <button type="button" class="ghost" id="cancel-edit" hidden>Cancelar edição</button>
+          </div>
+        </form>
+        <div class="users-table">
+          <table>
+            <thead>
+              <tr>
+                <th>Nome</th>
+                <th>E-mail</th>
+                <th>Perfil</th>
+                <th>Tema</th>
+                <th>Criado em</th>
+                <th>Ações</th>
+              </tr>
+            </thead>
+            <tbody id="users-table"></tbody>
+          </table>
+        </div>
+      </article>
+    </section>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <script type="module" src="js/configuracoes.js"></script>
+</body>
+</html>
