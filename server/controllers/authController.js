@@ -22,7 +22,8 @@ export const login = async (req, res) => {
   }
 
   const token = createToken(user);
-  const { password_hash, ...userData } = user;
+  const { password_hash: _passwordHash, ...userData } = user;
+  void _passwordHash;
   return res.json({ token, user: userData });
 };
 

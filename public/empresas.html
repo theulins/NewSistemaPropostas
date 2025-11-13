@@ -54,6 +54,7 @@
     <section id="list-section" class="panel" aria-labelledby="lista-title">
       <header class="card-header">
         <h2 id="lista-title">Empresas cadastradas</h2>
+        <button type="button" class="ghost" id="export-pdf">Exportar PDF</button>
       </header>
       <div class="table-wrapper">
         <table>
@@ -67,6 +68,7 @@
               <th>Setor</th>
               <th>Status</th>
               <th>Atualizado</th>
+              <th>Ações</th>
             </tr>
           </thead>
           <tbody id="companies-table"></tbody>
@@ -88,6 +90,10 @@
           <div class="flex">
             <label><span>CNPJ</span><input name="cnpj" maxlength="18"></label>
             <label><span>Inscrição Estadual</span><input name="ie"></label>
+          </div>
+          <div class="cnpj-lookup">
+            <button type="button" class="ghost" id="cnpj-lookup-btn">Buscar dados pelo CNPJ</button>
+            <small id="cnpj-lookup-status" aria-live="polite"></small>
           </div>
           <div class="flex">
             <label><span>Setor</span><input name="sector"></label>
@@ -167,6 +173,7 @@
   </main>
 
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
   <script type="module" src="js/empresas.js"></script>
 </body>
 </html>
