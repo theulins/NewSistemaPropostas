@@ -1,4 +1,10 @@
-import { initializePage, authFetch, showSuccess, showError } from './common.js';
+import {
+  initializePage,
+  authFetch,
+  showSuccess,
+  showError,
+  confirmAction,
+} from './common.js';
 
 const searchForm = document.getElementById('search-form');
 const companiesTable = document.getElementById('companies-table');
@@ -12,19 +18,49 @@ const clearSignature = document.getElementById('clear-signature');
 const exportPdfBtn = document.getElementById('export-pdf');
 const cnpjLookupBtn = document.getElementById('cnpj-lookup-btn');
 const cnpjLookupStatus = document.getElementById('cnpj-lookup-status');
+const formTitle = document.getElementById('form-title');
+const submitButton = companyForm?.querySelector('button[type="submit"]');
 
 let ctx;
 let drawing = false;
+let signatureHasContent = false;
 let profile;
 let activeFilters = {};
+let canManageCompanies = false;
+let editingCompanyId = null;
 
 function digitsOnly(value = '') {
   return value.replace(/\D+/g, '');
 }
 
-function formatDate(value) {
-  if (!value) return '-';
-  return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(value));
+function formatDateTime(value) {
+  if (!value) return '—';
+  return new Intl.DateTimeFormat('pt-BR', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+  }).format(new Date(value));
+}
+
+function formatDateOnly(value) {
+  if (!value) return '—';
+  return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short' }).format(new Date(value));
+}
+
+function formatCurrency(value) {
+  if (value === null || value === undefined || value === '') return '—';
+  const number = typeof value === 'number' ? value : Number(value);
+  if (Number.isNaN(number)) return '—';
+  return new Intl.NumberFormat('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+  }).format(number);
+}
+
+function formatPercent(value) {
+  if (value === null || value === undefined || value === '') return '—';
+  const number = typeof value === 'number' ? value : Number(value);
+  if (Number.isNaN(number)) return '—';
+  return `${(number * 100).toFixed(2)}%`;
 }
 
 function formatStatus(status) {
@@ -38,15 +74,40 @@ function sanitizeFilters(params = {}) {
   );
 }
 
+function renderActionsCell(item) {
+  const buttons = [];
+  if (canManageCompanies) {
+    buttons.push(
+      `<button type="button" class="ghost" data-action="edit" data-id="${item.id}">Editar</button>`
+    );
+    buttons.push(
+      `<button type="button" class="ghost danger" data-action="delete" data-id="${item.id}">Excluir</button>`
+    );
+  }
+  buttons.push(
+    `<button type="button" class="ghost" data-action="pdf" data-id="${item.id}">Exportar PDF</button>`
+  );
+  return `<div class="row-actions">${buttons.join('')}</div>`;
+}
+
 async function loadCompanies(params = {}) {
   activeFilters = sanitizeFilters(params);
   const query = new URLSearchParams(activeFilters);
   const endpoint = query.toString() ? `/empresas/search?${query}` : '/empresas/list';
   const data = await authFetch(endpoint);
-  companiesTable.innerHTML = data.items
+  const items = Array.isArray(data.items) ? data.items : [];
+  if (!items.length) {
+    companiesTable.innerHTML = `
+      <tr>
+        <td colspan="9">Nenhuma empresa encontrada com os filtros selecionados.</td>
+      </tr>
+    `;
+    return;
+  }
+  companiesTable.innerHTML = items
     .map(
       (item) => `
-        <tr>
+        <tr data-id="${item.id}">
           <td>${item.id}</td>
           <td>${item.fantasy_name || '—'}</td>
           <td>${item.cnpj || '—'}</td>
@@ -54,7 +115,8 @@ async function loadCompanies(params = {}) {
           <td>${item.state || '—'}</td>
           <td>${item.sector || '—'}</td>
           <td>${formatStatus(item.status)}</td>
-          <td>${formatDate(item.updated_at)}</td>
+          <td>${formatDateTime(item.updated_at)}</td>
+          <td>${renderActionsCell(item)}</td>
         </tr>
       `
     )
@@ -71,49 +133,78 @@ function showView(view) {
   });
 }
 
+function getSignatureStrokeColor() {
+  const styles = getComputedStyle(document.documentElement);
+  return styles.getPropertyValue('--text')?.trim() || '#0b1020';
+}
+
 function getCanvasContext() {
   if (!ctx) {
     ctx = signaturePad.getContext('2d');
     ctx.lineWidth = 2;
     ctx.lineCap = 'round';
-    ctx.strokeStyle = '#fff';
   }
+  ctx.strokeStyle = getSignatureStrokeColor();
   return ctx;
 }
 
+function resetSignatureData() {
+  signatureHasContent = false;
+  if (signatureDataInput) {
+    signatureDataInput.value = '';
+  }
+}
+
 function resizeCanvas() {
+  if (!signaturePad) return;
   const ratio = window.devicePixelRatio || 1;
   const rect = signaturePad.getBoundingClientRect();
   signaturePad.width = rect.width * ratio;
   signaturePad.height = rect.height * ratio;
   const context = getCanvasContext();
   context.setTransform(1, 0, 0, 1, 0, 0);
-  context.scale(ratio, ratio);
-  context.fillStyle = 'rgba(0,0,0,0)';
-  context.fillRect(0, 0, rect.width, rect.height);
-  signatureDataInput.value = '';
+  context.clearRect(0, 0, signaturePad.width, signaturePad.height);
+  context.setTransform(ratio, 0, 0, ratio, 0, 0);
+  resetSignatureData();
 }
 
 function startDrawing(event) {
+  if (!signaturePad) return;
+  if (event?.cancelable) {
+    event.preventDefault();
+  }
   drawing = true;
   const context = getCanvasContext();
   context.beginPath();
   const { offsetX, offsetY } = getOffset(event);
   context.moveTo(offsetX, offsetY);
+  context.lineTo(offsetX, offsetY);
+  context.stroke();
+  signatureHasContent = true;
+  updateSignatureData();
 }
 
 function draw(event) {
   if (!drawing) return;
-  event.preventDefault();
+  if (event?.preventDefault) {
+    event.preventDefault();
+  }
   const context = getCanvasContext();
   const { offsetX, offsetY } = getOffset(event);
   context.lineTo(offsetX, offsetY);
   context.stroke();
+  signatureHasContent = true;
   updateSignatureData();
 }
 
-function stopDrawing() {
+function stopDrawing(event) {
+  if (event?.preventDefault && event.cancelable) {
+    event.preventDefault();
+  }
   drawing = false;
+  if (signatureHasContent) {
+    updateSignatureData();
+  }
 }
 
 function getOffset(event) {
@@ -129,37 +220,59 @@ function getOffset(event) {
 }
 
 function updateSignatureData() {
+  if (!signaturePad || !signatureHasContent) return;
   signatureDataInput.value = signaturePad.toDataURL('image/png');
 }
 
 function clearSignaturePad() {
+  if (!signaturePad) return;
   const context = getCanvasContext();
+  context.setTransform(1, 0, 0, 1, 0, 0);
   context.clearRect(0, 0, signaturePad.width, signaturePad.height);
-  signatureDataInput.value = '';
+  context.setTransform(window.devicePixelRatio || 1, 0, 0, window.devicePixelRatio || 1, 0, 0);
+  resetSignatureData();
 }
 
 function bindSignaturePad() {
+  if (!signaturePad) return;
   resizeCanvas();
   window.addEventListener('resize', resizeCanvas);
   signaturePad.addEventListener('mousedown', startDrawing);
   signaturePad.addEventListener('mousemove', draw);
   signaturePad.addEventListener('mouseup', stopDrawing);
   signaturePad.addEventListener('mouseleave', stopDrawing);
-  signaturePad.addEventListener('touchstart', (event) => {
-    startDrawing(event);
-  }, { passive: false });
-  signaturePad.addEventListener('touchmove', (event) => {
-    draw(event);
-  }, { passive: false });
+  signaturePad.addEventListener('touchstart', startDrawing, { passive: false });
+  signaturePad.addEventListener('touchmove', draw, { passive: false });
   signaturePad.addEventListener('touchend', stopDrawing);
-  clearSignature.addEventListener('click', clearSignaturePad);
+  clearSignature?.addEventListener('click', () => {
+    clearSignaturePad();
+  });
 }
 
 function preparePayload(formData) {
-  const payload = Object.fromEntries(formData.entries());
+  const payload = {};
+  formData.forEach((value, key) => {
+    if (key === 'commission_exempt') return;
+    payload[key] = typeof value === 'string' ? value.trim() : value;
+  });
   payload.commission_exempt = formData.get('commission_exempt') ? 1 : 0;
+  if (!payload.employees_qty) {
+    payload.employees_qty = null;
+  } else {
+    payload.employees_qty = Number(payload.employees_qty);
+  }
+  if (!payload.value) {
+    payload.value = null;
+  } else {
+    payload.value = Number(payload.value);
+  }
   if (payload.commission_rate) {
     payload.commission_rate = Number(payload.commission_rate) / 100;
+  } else {
+    payload.commission_rate = null;
+  }
+  if (!payload.signature_data_url) {
+    delete payload.signature_data_url;
   }
   return payload;
 }
@@ -188,18 +301,8 @@ function exportTableToPdf() {
 
   const doc = new window.jspdf.jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
   const margin = 12;
-  const columns = [
-    { width: 15 },
-    { width: 65 },
-    { width: 45 },
-    { width: 35 },
-    { width: 12 },
-    { width: 32 },
-    { width: 30 },
-    { width: 39 },
-  ];
-  const usableWidth = columns.reduce((total, col) => total + col.width, 0);
-  const pageHeight = doc.internal.pageSize.getHeight();
+  const columns = [15, 60, 45, 35, 12, 32, 30, 39];
+  const usableWidth = columns.reduce((sum, width) => sum + width, 0);
   const headerLabels = ['ID', 'Nome fantasia', 'CNPJ', 'Cidade', 'UF', 'Setor', 'Status', 'Atualizado'];
   const filterSummary = buildFilterSummary();
 
@@ -212,12 +315,13 @@ function exportTableToPdf() {
   }
 
   let cursorY = margin + (filterSummary ? 20 : 16);
+  const pageHeight = doc.internal.pageSize.getHeight();
 
   const drawRow = (values, { header = false } = {}) => {
     doc.setFont('helvetica', header ? 'bold' : 'normal');
     const processed = values.map((value, index) => {
       const content = value || '—';
-      const width = columns[index].width - 2;
+      const width = columns[index] - 2;
       return doc.splitTextToSize(content, width);
     });
     const lineHeight = header ? 6 : 5;
@@ -230,7 +334,7 @@ function exportTableToPdf() {
     let cursorX = margin;
     processed.forEach((lines, index) => {
       doc.text(lines, cursorX, cursorY, { baseline: 'top' });
-      cursorX += columns[index].width;
+      cursorX += columns[index];
     });
     doc.setDrawColor(180);
     doc.line(margin, cursorY + rowHeight, margin + usableWidth, cursorY + rowHeight);
@@ -239,12 +343,13 @@ function exportTableToPdf() {
 
   drawRow(headerLabels, { header: true });
   rows.forEach((row) => {
-    const values = Array.from(row.children).map((cell) => cell.textContent.trim());
+    const values = Array.from(row.children)
+      .slice(0, headerLabels.length)
+      .map((cell) => cell.textContent.trim());
     drawRow(values);
   });
 
-  const filename = `empresas-${new Date().toISOString().slice(0, 10)}.pdf`;
-  doc.save(filename);
+  doc.save(`empresas-${new Date().toISOString().slice(0, 10)}.pdf`);
 }
 
 async function lookupCnpj() {
@@ -301,15 +406,291 @@ async function lookupCnpj() {
   }
 }
 
+async function fetchCompanyDetails(id) {
+  const response = await authFetch(`/empresas/${id}`);
+  return response.data;
+}
+
+function setFormMode(mode = 'create') {
+  if (!formTitle || !submitButton) return;
+  if (mode === 'edit') {
+    formTitle.textContent = 'Editar empresa';
+    submitButton.textContent = 'Atualizar empresa';
+  } else {
+    formTitle.textContent = 'Cadastrar nova empresa';
+    submitButton.textContent = 'Salvar empresa';
+  }
+}
+
+async function displaySignaturePreview(signatureUrl) {
+  clearSignaturePad();
+  if (!signatureUrl) return;
+  try {
+    const dataUrl = await fetchImageAsDataUrl(signatureUrl);
+    const image = new Image();
+    image.src = dataUrl;
+    await new Promise((resolve, reject) => {
+      image.onload = () => resolve();
+      image.onerror = reject;
+    });
+    const context = getCanvasContext();
+    const rect = signaturePad.getBoundingClientRect();
+    context.drawImage(image, 0, 0, rect.width, rect.height);
+    resetSignatureData();
+  } catch (error) {
+    console.warn('Não foi possível carregar a assinatura existente', error);
+  }
+}
+
+async function populateForm(company) {
+  if (!companyForm || !company) return;
+  const fields = [
+    'fantasy_name',
+    'corporate_name',
+    'cnpj',
+    'ie',
+    'address',
+    'zip',
+    'city',
+    'state',
+    'phone',
+    'cel',
+    'whatsapp',
+    'email',
+    'instagram',
+    'business_activity',
+    'foundation_date',
+    'employees_qty',
+    'sector',
+    'accounting_office',
+    'referred_by',
+    'note',
+    'plan_type',
+    'value',
+    'due_date',
+  ];
+  fields.forEach((field) => {
+    if (companyForm.elements[field]) {
+      companyForm.elements[field].value = company[field] ?? '';
+    }
+  });
+  if (companyForm.elements.commission_rate) {
+    companyForm.elements.commission_rate.value = company.commission_rate
+      ? (Number(company.commission_rate) * 100).toFixed(2)
+      : '';
+  }
+  if (companyForm.elements.commission_exempt) {
+    companyForm.elements.commission_exempt.checked = Boolean(company.commission_exempt);
+  }
+  await displaySignaturePreview(company.signature_url);
+}
+
+function resetFormState() {
+  editingCompanyId = null;
+  setFormMode('create');
+  companyForm.reset();
+  clearSignaturePad();
+  resetSignatureData();
+}
+
+async function startEditingCompany(id) {
+  if (!canManageCompanies) return;
+  try {
+    const company = await fetchCompanyDetails(id);
+    editingCompanyId = company.id;
+    await populateForm(company);
+    setFormMode('edit');
+    showView('form');
+  } catch (error) {
+    showError(error.message);
+  }
+}
+
+async function handleDeleteCompany(id) {
+  if (!canManageCompanies) return;
+  const confirmed = await confirmAction({
+    title: 'Excluir empresa',
+    text: 'Tem certeza que deseja remover esta empresa? Esta ação não pode ser desfeita.',
+    confirmButtonText: 'Sim, excluir',
+  });
+  if (!confirmed) return;
+  try {
+    await authFetch(`/empresas/${id}`, { method: 'DELETE' });
+    showSuccess('Empresa excluída com sucesso.');
+    await loadCompanies(activeFilters);
+  } catch (error) {
+    showError(error.message);
+  }
+}
+
+function getImageFormat(dataUrl) {
+  if (dataUrl.startsWith('data:image/png')) return 'PNG';
+  if (dataUrl.startsWith('data:image/jpeg') || dataUrl.startsWith('data:image/jpg')) return 'JPEG';
+  return 'PNG';
+}
+
+async function fetchImageAsDataUrl(src) {
+  const response = await fetch(src);
+  if (!response.ok) {
+    throw new Error('Não foi possível carregar a assinatura.');
+  }
+  const blob = await response.blob();
+  return await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function resolveSignatureData(company) {
+  if (company.signature_data_url) {
+    return company.signature_data_url;
+  }
+  if (company.signature_url) {
+    try {
+      return await fetchImageAsDataUrl(company.signature_url);
+    } catch (error) {
+      console.warn(error);
+      return null;
+    }
+  }
+  return null;
+}
+
+async function generateCompanyPdf(company) {
+  if (!company || !window.jspdf?.jsPDF) {
+    showError('Não foi possível gerar o PDF.');
+    return;
+  }
+  const doc = new window.jspdf.jsPDF({ unit: 'mm', format: 'a4' });
+  const margin = 16;
+  let cursorY = margin + 10;
+  doc.setFontSize(16);
+  doc.text('Documento de cadastro de empresa', margin, margin);
+  doc.setFontSize(11);
+  doc.text(`Gerado em ${new Date().toLocaleString('pt-BR')}`, margin, margin + 6);
+
+  const section = (title) => {
+    doc.setFont('helvetica', 'bold');
+    doc.text(title, margin, cursorY);
+    cursorY += 6;
+    doc.setFont('helvetica', 'normal');
+  };
+
+  const addLines = (pairs) => {
+    pairs.forEach(([label, value]) => {
+      const text = `${label}: ${value || '—'}`;
+      const lines = doc.splitTextToSize(text, 180);
+      lines.forEach((line) => {
+        doc.text(line, margin, cursorY);
+        cursorY += 5;
+      });
+      cursorY += 1;
+    });
+    cursorY += 2;
+  };
+
+  section('Identificação');
+  addLines([
+    ['ID', company.id],
+    ['Nome fantasia', company.fantasy_name],
+    ['Razão social', company.corporate_name],
+    ['CNPJ', company.cnpj],
+    ['Setor', company.sector],
+    ['Status', formatStatus(company.status)],
+  ]);
+
+  section('Contatos');
+  addLines([
+    ['E-mail', company.email],
+    ['Telefone', company.phone],
+    ['Celular', company.cel],
+    ['WhatsApp', company.whatsapp],
+    ['Instagram', company.instagram],
+  ]);
+
+  section('Endereço');
+  addLines([
+    ['Endereço', company.address],
+    ['Cidade', company.city],
+    ['Estado', company.state],
+    ['CEP', company.zip],
+  ]);
+
+  section('Financeiro');
+  addLines([
+    ['Plano', company.plan_type],
+    ['Valor', formatCurrency(company.value)],
+    ['Taxa de comissão', formatPercent(company.commission_rate)],
+    ['Vencimento', formatDateOnly(company.due_date)],
+  ]);
+
+  section('Observações');
+  addLines([
+    ['Observações', company.note],
+  ]);
+
+  const signatureData = await resolveSignatureData(company);
+  if (signatureData) {
+    doc.setFont('helvetica', 'bold');
+    doc.text('Assinatura', margin, cursorY);
+    cursorY += 4;
+    doc.setFont('helvetica', 'normal');
+    doc.addImage(signatureData, getImageFormat(signatureData), margin, cursorY, 70, 30);
+    cursorY += 36;
+  }
+
+  doc.text(`Responsável: ${profile?.name || '—'}`, margin, cursorY + 4);
+  const blobUrl = doc.output('bloburl');
+  window.open(blobUrl, '_blank', 'noopener');
+}
+
+async function handleExportCompanyPdf(id, button) {
+  try {
+    if (button) {
+      button.disabled = true;
+      button.textContent = 'Gerando...';
+    }
+    const company = await fetchCompanyDetails(id);
+    await generateCompanyPdf(company);
+  } catch (error) {
+    showError(error.message);
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.textContent = 'Exportar PDF';
+    }
+  }
+}
+
+function bindTableActions() {
+  companiesTable.addEventListener('click', (event) => {
+    const button = event.target.closest('button[data-action]');
+    if (!button) return;
+    const id = button.dataset.id;
+    const action = button.dataset.action;
+    if (action === 'edit') {
+      startEditingCompany(id);
+    } else if (action === 'delete') {
+      handleDeleteCompany(id);
+    } else if (action === 'pdf') {
+      handleExportCompanyPdf(id, button);
+    }
+  });
+}
+
 async function init() {
   const context = await initializePage('empresas');
   if (!context) return;
   profile = context.profile;
+  canManageCompanies = ['editor', 'admin'].includes(profile.role);
   await loadCompanies();
   bindSignaturePad();
+  bindTableActions();
   showView('lista');
 
-  const canCreate = ['editor', 'admin'].includes(profile.role);
+  const canCreate = canManageCompanies;
   companyForm.querySelectorAll('input, select, textarea, button').forEach((el) => {
     if (!canCreate) {
       el.disabled = true;
@@ -325,6 +706,9 @@ async function init() {
   toggleButtons.forEach((button) => {
     button.addEventListener('click', () => {
       showView(button.dataset.view);
+      if (button.dataset.view === 'lista' && editingCompanyId) {
+        resetFormState();
+      }
     });
   });
 
@@ -342,26 +726,50 @@ async function init() {
   });
 
   exportPdfBtn?.addEventListener('click', exportTableToPdf);
-  cnpjLookupBtn?.addEventListener('click', lookupCnpj);
+  if (canCreate) {
+    cnpjLookupBtn?.addEventListener('click', lookupCnpj);
+  }
 
   companyForm.addEventListener('submit', async (event) => {
     event.preventDefault();
     if (!canCreate) return;
-    const formData = new FormData(companyForm);
-    if (!signatureDataInput.value) {
+    if (!editingCompanyId && !signatureHasContent) {
+      showError('Desenhe a assinatura manual antes de salvar a empresa.');
+      return;
+    }
+    if (signatureHasContent) {
       updateSignatureData();
     }
+    const formData = new FormData(companyForm);
     const payload = preparePayload(formData);
     try {
-      await authFetch('/empresas', {
-        method: 'POST',
-        body: JSON.stringify(payload),
-      });
-      showSuccess('Empresa cadastrada com sucesso.');
-      companyForm.reset();
-      clearSignaturePad();
-      await loadCompanies();
+      let response;
+      const isEditing = Boolean(editingCompanyId);
+      if (isEditing) {
+        response = await authFetch(`/empresas/${editingCompanyId}`, {
+          method: 'PUT',
+          body: JSON.stringify(payload),
+        });
+      } else {
+        response = await authFetch('/empresas', {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        });
+      }
+      const companyData = response.data;
+      showSuccess(isEditing ? 'Empresa atualizada com sucesso.' : 'Empresa cadastrada com sucesso.');
+      await loadCompanies(activeFilters);
       showView('lista');
+      if (isEditing) {
+        resetFormState();
+      } else {
+        companyForm.reset();
+        clearSignaturePad();
+        resetSignatureData();
+        if (companyData) {
+          await generateCompanyPdf(companyData);
+        }
+      }
     } catch (error) {
       showError(error.message);
     }
