@@ -323,7 +323,7 @@ function extractRowValues(row) {
   return TABLE_HEADERS.map((_, index) => row.children[index]?.textContent.trim() || '');
 }
 
-async function exportTableToPdf() {
+function exportTableToPdf() {
   const rows = getTableRows();
   if (!rows.length) {
     showError('Não há dados para exportar. Faça uma busca antes.');
@@ -362,6 +362,45 @@ async function exportTableToPdf() {
       exportPdfBtn.textContent = originalText || 'Exportar PDF';
     }
   }
+}
+
+  const doc = new window.jspdf.jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+  const margin = 12;
+  const columns = [15, 60, 45, 35, 12, 32, 30, 39];
+  const usableWidth = columns.reduce((sum, width) => sum + width, 0);
+  const headerLabels = TABLE_HEADERS;
+  const filterSummary = buildFilterSummary();
+  const lines = [];
+  lines.push(['Empresas cadastradas']);
+  lines.push(['Emitido em', new Date().toLocaleString('pt-BR')]);
+  if (filterSummary) {
+    lines.push(['Filtros', filterSummary]);
+  }
+  lines.push(TABLE_HEADERS);
+  rows.forEach((row) => {
+    const values = extractRowValues(row);
+    drawRow(values);
+  });
+
+  const csvContent = lines
+    .map((cells) =>
+      cells
+        .map((cell) => {
+          const safe = (cell || '').replace(/"/g, '""');
+          return `"${safe}"`;
+        })
+        .join(';')
+    )
+    .join('\r\n');
+  const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `empresas-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 }
 
 function exportTableToCsv() {
@@ -622,96 +661,25 @@ function describeOptions(values, labels) {
   return readable.length ? readable.join(', ') : '—';
 }
 
-const PDF_PAGE_WIDTH = 595.28;
-const PDF_PAGE_HEIGHT = 841.89;
-const PDF_MARGIN = 40;
-const PDF_LINE_HEIGHT = 14;
-const PDF_MAX_LINE_LENGTH = 96;
-const PX_TO_PT = 72 / 96;
-const encoder = new TextEncoder();
-
-function concatUint8Arrays(arrays) {
-  const total = arrays.reduce((sum, array) => sum + array.length, 0);
-  const result = new Uint8Array(total);
-  let offset = 0;
-  arrays.forEach((array) => {
-    result.set(array, offset);
-    offset += array.length;
-  });
-  return result;
-}
-
-function encodePdfText(value) {
-  return encoder.encode(value);
-}
-
-function sanitizePdfText(value) {
-  return String(value || '')
-    .replace(/\u00a0/g, ' ')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[\\]/g, '\\\\')
-    .replace(/\(/g, '\\(')
-    .replace(/\)/g, '\\)')
-    .replace(/[^\x20-\x7E]/g, '');
-}
-
-function wrapPdfLines(text) {
-  const sanitized = sanitizePdfText(text);
-  if (!sanitized) {
-    return [''];
+async function generateCompanyPdf(company) {
+  const jsPDF = window.jspdf?.jsPDF;
+  if (!company || !jsPDF) {
+    showError('Não foi possível gerar o PDF.');
+    return;
   }
-  const words = sanitized.split(/\s+/);
-  const lines = [];
-  let current = '';
-  words.forEach((word) => {
-    if (!word) return;
-    const candidate = current ? `${current} ${word}` : word;
-    if (candidate.length > PDF_MAX_LINE_LENGTH) {
-      if (current) {
-        lines.push(current);
-        current = '';
-      }
-      if (word.length > PDF_MAX_LINE_LENGTH) {
-        for (let i = 0; i < word.length; i += PDF_MAX_LINE_LENGTH) {
-          lines.push(word.slice(i, i + PDF_MAX_LINE_LENGTH));
-        }
-      } else {
-        current = word;
-      }
-    } else {
-      current = candidate;
-    }
-  });
-  if (current) {
-    lines.push(current);
-  }
-  return lines.length ? lines : [''];
-}
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const margin = 16;
+  let cursorY = margin + 10;
+  doc.setFontSize(16);
+  doc.text('Documento de cadastro de empresa', margin, margin);
+  doc.setFontSize(11);
+  doc.text(`Gerado em ${new Date().toLocaleString('pt-BR')}`, margin, margin + 6);
 
-function pdfValue(value) {
-  const raw = value === null || value === undefined ? '' : String(value).trim();
-  if (!raw || raw === '—') {
-    return 'Sem informacao';
-  }
-  return raw.replace(/\u00a0/g, ' ');
-}
-
-function buildContentStream(entries, signature) {
-  const commands = [];
-  let textOpen = false;
-  let currentFont = null;
-  let currentSize = null;
-  let currentY = PDF_PAGE_HEIGHT - PDF_MARGIN;
-
-  const openText = () => {
-    if (textOpen) return;
-    commands.push('BT');
-    commands.push(`${PDF_LINE_HEIGHT.toFixed(2)} TL`);
-    commands.push(`${PDF_MARGIN.toFixed(2)} ${currentY.toFixed(2)} Td`);
-    textOpen = true;
-    currentFont = null;
-    currentSize = null;
+  const section = (title) => {
+    doc.setFont('helvetica', 'bold');
+    doc.text(title, margin, cursorY);
+    cursorY += 6;
+    doc.setFont('helvetica', 'normal');
   };
 
   const closeText = () => {
@@ -853,8 +821,16 @@ function buildPdfBytes(entries, signature) {
     encodePdfText(`<< /Type /Pages /Kids [${pageObject} 0 R] /Count 1 >>`),
   ]);
 
-  const catalogObject = addObject(() => [
-    encodePdfText(`<< /Type /Catalog /Pages ${pagesObject} 0 R >>`),
+  section('Serviços e comunicação');
+  addLines([
+    ['Serviços contratados', describeOptions(company.services_contracted, SERVICE_LABELS)],
+    ['Canais autorizados', describeOptions(company.marketing_authorizations, MARKETING_LABELS)],
+  ]);
+
+  section('Observações');
+  addLines([
+    ['Observações', company.note],
+    ['Motivo de reprovação', company.rejection_reason],
   ]);
 
   return finalizePdf(definitions, catalogObject);
@@ -919,136 +895,22 @@ class SimplePdfDocument {
     this.entries.push({ type: 'title', text: pdfValue(text), spaceAfter: 1 });
   }
 
-  addSection(text) {
-    if (!text) return;
-    this.entries.push({ type: 'heading', text: pdfValue(text), spaceAfter: 1 });
-  }
+  doc.text(`Responsável: ${profile?.name || '—'}`, margin, cursorY + 4);
 
-  addParagraph(text, spaceAfter = 0) {
-    this.entries.push({ type: 'text', text: pdfValue(text), spaceAfter });
-  }
+  const safeName = (value) =>
+    String(value || '')
+      .normalize('NFD')
+      .replace(/[^\w\s-]/g, '')
+      .trim()
+      .replace(/\s+/g, '-')
+      .toLowerCase();
 
-  addKeyValue(label, value) {
-    this.entries.push({ type: 'text', text: `${label}: ${pdfValue(value)}` });
-  }
+  const filename = ['empresa', company.id, safeName(company.fantasy_name)]
+    .filter(Boolean)
+    .join('-')
+    .concat('.pdf');
 
-  addSpacer(lines = 1) {
-    if (lines > 0) {
-      this.entries.push({ type: 'spacer', lines });
-    }
-  }
-
-  async attachSignature(dataUrl) {
-    this.signature = await prepareSignatureData(dataUrl);
-  }
-
-  addSignaturePlaceholder() {
-    if (this.signature) {
-      this.entries.push({ type: 'signature' });
-    }
-  }
-
-  async save(filename) {
-    const bytes = buildPdfBytes(this.entries, this.signature);
-    const blob = new Blob([bytes], { type: 'application/pdf' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    link.href = url;
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    setTimeout(() => {
-      URL.revokeObjectURL(url);
-      link.remove();
-    }, 0);
-  }
-}
-
-async function generateCompanyPdf(company) {
-  if (!company) {
-    showError('Não foi possível gerar o PDF.');
-    return;
-  }
-  try {
-    const doc = new SimplePdfDocument();
-    doc.addTitle('Documento de cadastro de empresa');
-    doc.addParagraph(`Gerado em ${new Date().toLocaleString('pt-BR')}`);
-    doc.addSpacer();
-
-    doc.addSection('Identificacao');
-    doc.addKeyValue('ID', company.id);
-    doc.addKeyValue('Nome fantasia', company.fantasy_name);
-    doc.addKeyValue('Razao social', company.corporate_name);
-    doc.addKeyValue('CNPJ', company.cnpj);
-    doc.addKeyValue('Setor', company.sector);
-    doc.addKeyValue('Status', formatStatus(company.status));
-    doc.addSpacer();
-
-    doc.addSection('Contatos');
-    doc.addKeyValue('E-mail', company.email);
-    doc.addKeyValue('Telefone', company.phone);
-    doc.addKeyValue('Celular', company.cel);
-    doc.addKeyValue('WhatsApp', company.whatsapp);
-    doc.addKeyValue('Instagram', company.instagram);
-    doc.addSpacer();
-
-    doc.addSection('Endereco');
-    doc.addKeyValue('Endereco', company.address);
-    doc.addKeyValue('Cidade', company.city);
-    doc.addKeyValue('Estado', company.state);
-    doc.addKeyValue('CEP', company.zip);
-    doc.addSpacer();
-
-    doc.addSection('Financeiro');
-    doc.addKeyValue('Plano', company.plan_type);
-    doc.addKeyValue('Valor', formatCurrency(company.value));
-    doc.addKeyValue('Taxa de comissao', formatPercent(company.commission_rate));
-    doc.addKeyValue('Vencimento', formatDateOnly(company.due_date));
-    doc.addSpacer();
-
-    doc.addSection('Servicos e comunicacao');
-    doc.addKeyValue('Servicos contratados', describeOptions(company.services_contracted, SERVICE_LABELS));
-    doc.addKeyValue('Canais autorizados', describeOptions(company.marketing_authorizations, MARKETING_LABELS));
-    doc.addSpacer();
-
-    doc.addSection('Observacoes');
-    doc.addKeyValue('Observacoes', company.note);
-    doc.addKeyValue('Motivo de reprovacao', company.rejection_reason);
-    doc.addSpacer();
-
-    const signatureData = await resolveSignatureData(company);
-    if (signatureData) {
-      try {
-        await doc.attachSignature(signatureData);
-        doc.addSection('Assinatura digital');
-        doc.addSpacer();
-        doc.addSignaturePlaceholder();
-        doc.addSpacer();
-      } catch (error) {
-        console.warn('Não foi possível processar a assinatura', error);
-      }
-    }
-
-    doc.addParagraph(`Responsavel: ${profile?.name || 'Sem informacao'}`);
-
-    const safeName = (value) =>
-      String(value || '')
-        .normalize('NFD')
-        .replace(/[^\w\s-]/g, '')
-        .trim()
-        .replace(/\s+/g, '-')
-        .toLowerCase();
-
-    const filename = ['empresa', company.id, safeName(company.fantasy_name)]
-      .filter(Boolean)
-      .join('-')
-      .concat('.pdf');
-
-    await doc.save(filename);
-  } catch (error) {
-    console.error(error);
-    showError('Não foi possível gerar o PDF.');
-  }
+  doc.save(filename);
 }
 
 async function handleExportCompanyPdf(id, button) {
