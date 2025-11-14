@@ -650,11 +650,12 @@ function describeOptions(values, labels) {
 }
 
 async function generateCompanyPdf(company) {
-  if (!company || !window.jspdf?.jsPDF) {
+  const jsPDF = window.jspdf?.jsPDF;
+  if (!company || !jsPDF) {
     showError('Não foi possível gerar o PDF.');
     return;
   }
-  const doc = new window.jspdf.jsPDF({ unit: 'mm', format: 'a4' });
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   const margin = 16;
   let cursorY = margin + 10;
   doc.setFontSize(16);
@@ -740,8 +741,21 @@ async function generateCompanyPdf(company) {
   }
 
   doc.text(`Responsável: ${profile?.name || '—'}`, margin, cursorY + 4);
-  const blobUrl = doc.output('bloburl');
-  window.open(blobUrl, '_blank', 'noopener');
+
+  const safeName = (value) =>
+    String(value || '')
+      .normalize('NFD')
+      .replace(/[^\w\s-]/g, '')
+      .trim()
+      .replace(/\s+/g, '-')
+      .toLowerCase();
+
+  const filename = ['empresa', company.id, safeName(company.fantasy_name)]
+    .filter(Boolean)
+    .join('-')
+    .concat('.pdf');
+
+  doc.save(filename);
 }
 
 async function handleExportCompanyPdf(id, button) {
