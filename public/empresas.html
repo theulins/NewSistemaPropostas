@@ -54,7 +54,10 @@
     <section id="list-section" class="panel" aria-labelledby="lista-title">
       <header class="card-header">
         <h2 id="lista-title">Empresas cadastradas</h2>
-        <button type="button" class="ghost" id="export-pdf">Exportar PDF</button>
+        <div class="export-actions">
+          <button type="button" class="ghost" id="export-pdf">Exportar PDF</button>
+          <button type="button" class="ghost" id="export-csv">Exportar planilha</button>
+        </div>
       </header>
       <div class="table-wrapper">
         <table>
@@ -121,6 +124,28 @@
         </fieldset>
 
         <fieldset>
+          <legend>Serviços e divulgação</legend>
+          <div class="option-group">
+            <span>Área do serviço contratado</span>
+            <div class="option-grid" role="group" aria-label="Serviços contratados">
+              <label><input type="checkbox" name="services_contracted" value="spc"> <span>SPC</span></label>
+              <label><input type="checkbox" name="services_contracted" value="nfe"> <span>NF-e</span></label>
+              <label><input type="checkbox" name="services_contracted" value="nfce"> <span>NFC-e</span></label>
+              <label><input type="checkbox" name="services_contracted" value="cte"> <span>CT-e</span></label>
+              <label><input type="checkbox" name="services_contracted" value="cfe"> <span>CF-e</span></label>
+            </div>
+          </div>
+          <div class="option-group">
+            <span>Autorização de divulgação</span>
+            <div class="option-grid" role="group" aria-label="Canais autorizados">
+              <label><input type="checkbox" name="marketing_authorizations" value="site"> <span>Site</span></label>
+              <label><input type="checkbox" name="marketing_authorizations" value="whatsapp"> <span>WhatsApp</span></label>
+              <label><input type="checkbox" name="marketing_authorizations" value="email"> <span>E-mail marketing</span></label>
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset>
           <legend>Endereço</legend>
           <div class="flex">
             <label><span>CEP</span><input name="zip" inputmode="numeric" maxlength="9"></label>
@@ -172,8 +197,6 @@
     </section>
   </main>
 
-  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
   <script type="module" src="js/empresas.js"></script>
 </body>
 </html>

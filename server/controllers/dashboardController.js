@@ -2,7 +2,22 @@ import pool from '../db/pool.js';
 
 export const getSummary = async (_req, res) => {
   const [[usersCount]] = await pool.query('SELECT COUNT(*) AS total FROM users');
-  const [[companiesCount]] = await pool.query("SELECT COUNT(*) AS total FROM companies WHERE status != 'reprovado'");
+  const [[companyStats]] = await pool.query(
+    `SELECT
+      COUNT(*) AS total,
+      SUM(status = 'ativo') AS active,
+      SUM(status = 'pendente') AS pending,
+      SUM(status = 'reprovado') AS rejected,
+      IFNULL(SUM(CASE WHEN status = 'ativo' THEN value ELSE 0 END), 0) AS activeValue
+    FROM companies`
+  );
+
+  const totalCompanies = Number(companyStats?.total || 0);
+  const activeCompanies = Number(companyStats?.active || 0);
+  const pendingCompanies = Number(companyStats?.pending || 0);
+  const rejectedCompanies = Number(companyStats?.rejected || 0);
+  const activeValue = Number(companyStats?.activeValue || 0);
+  const averageTicket = activeCompanies > 0 ? Number((activeValue / activeCompanies).toFixed(2)) : 0;
 
   const [recent] = await pool.query(
     `SELECT c.id, c.fantasy_name, u.name AS updated_by_name, c.updated_at
@@ -13,8 +28,13 @@ export const getSummary = async (_req, res) => {
   );
 
   return res.json({
-    totalUsers: usersCount.total,
-    totalCompanies: companiesCount.total,
+    totalUsers: Number(usersCount.total || 0),
+    totalCompanies,
+    activeCompanies,
+    pendingCompanies,
+    rejectedCompanies,
+    activeValue,
+    averageTicket,
     recent: recent.map((item) => ({
       id: item.id,
       fantasy_name: item.fantasy_name,

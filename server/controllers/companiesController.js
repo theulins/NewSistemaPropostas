@@ -12,6 +12,9 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const uploadsDir = process.env.UPLOADS_DIR || path.join(__dirname, '..', 'uploads');
 
+const SERVICE_OPTIONS = new Set(['spc', 'nfe', 'nfce', 'cte', 'cfe']);
+const MARKETING_OPTIONS = new Set(['site', 'whatsapp', 'email']);
+
 function ensureUploadsDir() {
   if (!fs.existsSync(uploadsDir)) {
     fs.mkdirSync(uploadsDir, { recursive: true });
@@ -21,6 +24,48 @@ function ensureUploadsDir() {
 async function findCompanyById(id) {
   const [rows] = await pool.query('SELECT * FROM companies WHERE id = ? LIMIT 1', [id]);
   return rows[0] || null;
+}
+
+function parseStoredArray(value) {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (_error) {
+    return [];
+  }
+}
+
+function presentCompany(row) {
+  if (!row) return row;
+  return {
+    ...row,
+    services_contracted: parseStoredArray(row.services_contracted),
+    marketing_authorizations: parseStoredArray(row.marketing_authorizations),
+  };
+}
+
+function normalizeOptionArray(value, allowedSet) {
+  if (value === undefined || value === null) return null;
+  const source = Array.isArray(value) ? value : [value];
+  const normalized = [];
+  source.forEach((item) => {
+    const formatted = String(item || '').toLowerCase();
+    if (allowedSet.has(formatted) && !normalized.includes(formatted)) {
+      normalized.push(formatted);
+    }
+  });
+  return normalized.length ? normalized : null;
+}
+
+function serializeOptions(value, allowedSet) {
+  const normalized = normalizeOptionArray(value, allowedSet);
+  return normalized ? JSON.stringify(normalized) : null;
+}
+
+function pickOptionsJson(value, existingJson, allowedSet) {
+  if (value === undefined) return existingJson;
+  return serializeOptions(value, allowedSet);
 }
 
 function removeSignatureFile(signatureUrl) {
@@ -166,6 +211,8 @@ export const createCompany = async (req, res) => {
     accounting_office,
     referred_by,
     note,
+    services_contracted,
+    marketing_authorizations,
     plan_type,
     value,
     commission_rate,
@@ -192,13 +239,17 @@ export const createCompany = async (req, res) => {
     return res.status(400).json({ message: 'Assinatura digital inválida.' });
   }
 
+  const servicesJson = serializeOptions(services_contracted, SERVICE_OPTIONS);
+  const marketingJson = serializeOptions(marketing_authorizations, MARKETING_OPTIONS);
+
   const [result] = await pool.query(
     `INSERT INTO companies (
       fantasy_name, corporate_name, cnpj, ie, address, zip, city, state, phone, cel, whatsapp, email, instagram,
       business_activity, foundation_date, employees_qty, sector, accounting_office, referred_by, note,
+      services_contracted, marketing_authorizations,
       plan_type, value, commission_rate, commission_exempt, due_date, signature_url, status, updated_by
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, 'pendente', ?)
-    `,
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, 'pendente', ?)`
+    ,
     [
       nullIfEmpty(fantasy_name),
       nullIfEmpty(corporate_name),
@@ -220,6 +271,8 @@ export const createCompany = async (req, res) => {
       nullIfEmpty(accounting_office),
       nullIfEmpty(referred_by),
       nullIfEmpty(note),
+      servicesJson,
+      marketingJson,
       nullIfEmpty(plan_type),
       value ? Number(value) : null,
       commission_rate ? Number(commission_rate) : null,
@@ -230,7 +283,7 @@ export const createCompany = async (req, res) => {
     ]
   );
 
-  const created = await findCompanyById(result.insertId);
+  const created = presentCompany(await findCompanyById(result.insertId));
   res.status(201).json({ data: created, message: 'Empresa criada com sucesso.' });
 };
 
@@ -239,7 +292,7 @@ export const getCompanyDetails = async (req, res) => {
   if (!Number.isInteger(companyId)) {
     return res.status(400).json({ message: 'Identificador inválido.' });
   }
-  const company = await findCompanyById(companyId);
+  const company = presentCompany(await findCompanyById(companyId));
   if (!company) {
     return res.status(404).json({ message: 'Empresa não encontrada.' });
   }
@@ -278,6 +331,8 @@ export const updateCompany = async (req, res) => {
     accounting_office,
     referred_by,
     note,
+    services_contracted,
+    marketing_authorizations,
     plan_type,
     value,
     commission_rate,
@@ -321,6 +376,8 @@ export const updateCompany = async (req, res) => {
       foundation_date = ?,
       employees_qty = ?,
       sector = ?,
+      services_contracted = ?,
+      marketing_authorizations = ?,
       accounting_office = ?,
       referred_by = ?,
       note = ?,
@@ -350,6 +407,8 @@ export const updateCompany = async (req, res) => {
       pickNullableString(foundation_date, existing.foundation_date),
       pickNullableNumber(employees_qty, existing.employees_qty),
       pickNullableString(sector, existing.sector),
+      pickOptionsJson(services_contracted, existing.services_contracted, SERVICE_OPTIONS),
+      pickOptionsJson(marketing_authorizations, existing.marketing_authorizations, MARKETING_OPTIONS),
       pickNullableString(accounting_office, existing.accounting_office),
       pickNullableString(referred_by, existing.referred_by),
       pickNullableString(note, existing.note),
@@ -364,7 +423,7 @@ export const updateCompany = async (req, res) => {
     ]
   );
 
-  const updated = await findCompanyById(companyId);
+  const updated = presentCompany(await findCompanyById(companyId));
   res.json({ data: updated, message: 'Empresa atualizada com sucesso.' });
 };
 

@@ -16,10 +16,25 @@ const signaturePad = document.getElementById('signature-pad');
 const signatureDataInput = document.getElementById('signature-data');
 const clearSignature = document.getElementById('clear-signature');
 const exportPdfBtn = document.getElementById('export-pdf');
+const exportCsvBtn = document.getElementById('export-csv');
 const cnpjLookupBtn = document.getElementById('cnpj-lookup-btn');
 const cnpjLookupStatus = document.getElementById('cnpj-lookup-status');
 const formTitle = document.getElementById('form-title');
 const submitButton = companyForm?.querySelector('button[type="submit"]');
+
+const TABLE_HEADERS = ['ID', 'Nome fantasia', 'CNPJ', 'Cidade', 'UF', 'Setor', 'Status', 'Atualizado'];
+const SERVICE_LABELS = {
+  spc: 'SPC',
+  nfe: 'NF-e',
+  nfce: 'NFC-e',
+  cte: 'CT-e',
+  cfe: 'CF-e',
+};
+const MARKETING_LABELS = {
+  site: 'Site',
+  whatsapp: 'WhatsApp',
+  email: 'E-mail marketing',
+};
 
 let ctx;
 let drawing = false;
@@ -131,6 +146,9 @@ function showView(view) {
     btn.classList.toggle('primary', btn.dataset.view === view);
     btn.classList.toggle('ghost', btn.dataset.view !== view);
   });
+  if (showForm) {
+    requestAnimationFrame(() => resizeCanvas());
+  }
 }
 
 function getSignatureStrokeColor() {
@@ -250,9 +268,18 @@ function bindSignaturePad() {
 }
 
 function preparePayload(formData) {
-  const payload = {};
+  const payload = {
+    services_contracted: [],
+    marketing_authorizations: [],
+  };
   formData.forEach((value, key) => {
     if (key === 'commission_exempt') return;
+    if (Array.isArray(payload[key])) {
+      if (value) {
+        payload[key].push(typeof value === 'string' ? value.trim() : value);
+      }
+      return;
+    }
     payload[key] = typeof value === 'string' ? value.trim() : value;
   });
   payload.commission_exempt = formData.get('commission_exempt') ? 1 : 0;
@@ -288,68 +315,95 @@ function buildFilterSummary() {
   return summary.join(' • ');
 }
 
-function exportTableToPdf() {
-  const rows = Array.from(companiesTable.querySelectorAll('tr'));
+function getTableRows() {
+  return Array.from(companiesTable.querySelectorAll('tr[data-id]'));
+}
+
+function extractRowValues(row) {
+  return TABLE_HEADERS.map((_, index) => row.children[index]?.textContent.trim() || '');
+}
+
+function getExportContext() {
+  const rows = getTableRows();
   if (!rows.length) {
     showError('Não há dados para exportar. Faça uma busca antes.');
-    return;
+    return null;
   }
-  if (!window.jspdf?.jsPDF) {
-    showError('Biblioteca de PDF não carregada. Verifique sua conexão.');
-    return;
+  return { rows, filterSummary: buildFilterSummary() };
+}
+
+async function exportTableToPdf() {
+  const context = getExportContext();
+  if (!context) return;
+  const { rows, filterSummary } = context;
+  const originalText = exportPdfBtn?.textContent;
+  if (exportPdfBtn) {
+    exportPdfBtn.disabled = true;
+    exportPdfBtn.textContent = 'Gerando...';
   }
-
-  const doc = new window.jspdf.jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
-  const margin = 12;
-  const columns = [15, 60, 45, 35, 12, 32, 30, 39];
-  const usableWidth = columns.reduce((sum, width) => sum + width, 0);
-  const headerLabels = ['ID', 'Nome fantasia', 'CNPJ', 'Cidade', 'UF', 'Setor', 'Status', 'Atualizado'];
-  const filterSummary = buildFilterSummary();
-
-  doc.setFontSize(16);
-  doc.text('Empresas cadastradas', margin, margin);
-  doc.setFontSize(10);
-  doc.text(`Emitido em ${new Date().toLocaleString('pt-BR')}`, margin, margin + 6);
-  if (filterSummary) {
-    doc.text(`Filtros: ${filterSummary}`, margin, margin + 12, { maxWidth: usableWidth });
-  }
-
-  let cursorY = margin + (filterSummary ? 20 : 16);
-  const pageHeight = doc.internal.pageSize.getHeight();
-
-  const drawRow = (values, { header = false } = {}) => {
-    doc.setFont('helvetica', header ? 'bold' : 'normal');
-    const processed = values.map((value, index) => {
-      const content = value || '—';
-      const width = columns[index] - 2;
-      return doc.splitTextToSize(content, width);
-    });
-    const lineHeight = header ? 6 : 5;
-    const rowHeight = Math.max(...processed.map((lines) => lines.length)) * lineHeight + 2;
-    if (!header && cursorY + rowHeight > pageHeight - margin) {
-      doc.addPage();
-      cursorY = margin;
-      drawRow(headerLabels, { header: true });
+  try {
+    const doc = new SimplePdfDocument();
+    doc.addTitle('Empresas cadastradas');
+    doc.addParagraph(`Emitido em ${new Date().toLocaleString('pt-BR')}`);
+    if (filterSummary) {
+      doc.addParagraph(`Filtros: ${filterSummary}`);
     }
-    let cursorX = margin;
-    processed.forEach((lines, index) => {
-      doc.text(lines, cursorX, cursorY, { baseline: 'top' });
-      cursorX += columns[index];
+    doc.addSpacer();
+    rows.forEach((row, index) => {
+      const values = extractRowValues(row);
+      doc.addParagraph(`${index + 1}. ${pdfValue(values[1])} (ID ${pdfValue(values[0])})`);
+      doc.addParagraph(`CNPJ: ${pdfValue(values[2])} - ${pdfValue(values[3])}/${pdfValue(values[4])}`);
+      doc.addParagraph(
+        `Setor: ${pdfValue(values[5])} - Status: ${pdfValue(values[6])} - Atualizado: ${pdfValue(values[7])}`
+      );
+      doc.addSpacer();
     });
-    doc.setDrawColor(180);
-    doc.line(margin, cursorY + rowHeight, margin + usableWidth, cursorY + rowHeight);
-    cursorY += rowHeight + 2;
-  };
+    await doc.save(`empresas-${new Date().toISOString().slice(0, 10)}.pdf`);
+  } catch (error) {
+    console.error(error);
+    showError('Não foi possível gerar o PDF.');
+  } finally {
+    if (exportPdfBtn) {
+      exportPdfBtn.disabled = false;
+      exportPdfBtn.textContent = originalText || 'Exportar PDF';
+    }
+  }
+}
 
-  drawRow(headerLabels, { header: true });
+function exportTableToCsv() {
+  const context = getExportContext();
+  if (!context) return;
+  const { rows, filterSummary } = context;
+  const lines = [];
+  lines.push(['Empresas cadastradas']);
+  lines.push(['Emitido em', new Date().toLocaleString('pt-BR')]);
+  if (filterSummary) {
+    lines.push(['Filtros', filterSummary]);
+  }
+  lines.push(TABLE_HEADERS);
   rows.forEach((row) => {
-    const values = Array.from(row.children)
-      .slice(0, headerLabels.length)
-      .map((cell) => cell.textContent.trim());
-    drawRow(values);
+    lines.push(extractRowValues(row));
   });
 
-  doc.save(`empresas-${new Date().toISOString().slice(0, 10)}.pdf`);
+  const csvContent = lines
+    .map((cells) =>
+      cells
+        .map((cell) => {
+          const safe = (cell || '').replace(/"/g, '""');
+          return `"${safe}"`;
+        })
+        .join(';')
+    )
+    .join('\r\n');
+  const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `empresas-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 }
 
 async function lookupCnpj() {
@@ -361,8 +415,10 @@ async function lookupCnpj() {
     showError('Informe um CNPJ válido com 14 dígitos.');
     return;
   }
-  cnpjLookupBtn.disabled = true;
-  cnpjLookupBtn.textContent = 'Buscando...';
+  if (cnpjLookupBtn) {
+    cnpjLookupBtn.disabled = true;
+    cnpjLookupBtn.textContent = 'Buscando...';
+  }
   if (cnpjLookupStatus) {
     cnpjLookupStatus.textContent = 'Consultando a base da Receita Federal...';
   }
@@ -401,14 +457,25 @@ async function lookupCnpj() {
     }
     showError(error.message);
   } finally {
-    cnpjLookupBtn.disabled = false;
-    cnpjLookupBtn.textContent = 'Buscar dados pelo CNPJ';
+    if (cnpjLookupBtn) {
+      cnpjLookupBtn.disabled = false;
+      cnpjLookupBtn.textContent = 'Buscar dados pelo CNPJ';
+    }
   }
 }
 
 async function fetchCompanyDetails(id) {
   const response = await authFetch(`/empresas/${id}`);
   return response.data;
+}
+
+function setCheckboxGroup(fieldName, values = []) {
+  if (!companyForm) return;
+  const normalized = Array.isArray(values) ? values : values ? [values] : [];
+  const selected = new Set(normalized);
+  companyForm.querySelectorAll(`input[name="${fieldName}"]`).forEach((checkbox) => {
+    checkbox.checked = selected.has(checkbox.value);
+  });
 }
 
 function setFormMode(mode = 'create') {
@@ -482,6 +549,8 @@ async function populateForm(company) {
   if (companyForm.elements.commission_exempt) {
     companyForm.elements.commission_exempt.checked = Boolean(company.commission_exempt);
   }
+  setCheckboxGroup('services_contracted', company.services_contracted || []);
+  setCheckboxGroup('marketing_authorizations', company.marketing_authorizations || []);
   await displaySignaturePreview(company.signature_url);
 }
 
@@ -498,9 +567,9 @@ async function startEditingCompany(id) {
   try {
     const company = await fetchCompanyDetails(id);
     editingCompanyId = company.id;
-    await populateForm(company);
     setFormMode('edit');
     showView('form');
+    await populateForm(company);
   } catch (error) {
     showError(error.message);
   }
@@ -521,12 +590,6 @@ async function handleDeleteCompany(id) {
   } catch (error) {
     showError(error.message);
   }
-}
-
-function getImageFormat(dataUrl) {
-  if (dataUrl.startsWith('data:image/png')) return 'PNG';
-  if (dataUrl.startsWith('data:image/jpeg') || dataUrl.startsWith('data:image/jpg')) return 'JPEG';
-  return 'PNG';
 }
 
 async function fetchImageAsDataUrl(src) {
@@ -558,92 +621,441 @@ async function resolveSignatureData(company) {
   return null;
 }
 
+function describeOptions(values, labels) {
+  const source = Array.isArray(values) ? values : [];
+  const readable = source
+    .map((value) => labels[value] || null)
+    .filter(Boolean);
+  return readable.length ? readable.join(', ') : '—';
+}
+
+const PDF_PAGE_WIDTH = 595.28;
+const PDF_PAGE_HEIGHT = 841.89;
+const PDF_MARGIN = 40;
+const PDF_LINE_HEIGHT = 14;
+const PDF_MAX_LINE_LENGTH = 96;
+const PX_TO_PT = 72 / 96;
+const encoder = new TextEncoder();
+
+function concatUint8Arrays(arrays) {
+  const total = arrays.reduce((sum, array) => sum + array.length, 0);
+  const result = new Uint8Array(total);
+  let offset = 0;
+  arrays.forEach((array) => {
+    result.set(array, offset);
+    offset += array.length;
+  });
+  return result;
+}
+
+function encodePdfText(value) {
+  return encoder.encode(value);
+}
+
+function sanitizePdfText(value) {
+  return String(value || '')
+    .replace(/\u00a0/g, ' ')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[\\]/g, '\\\\')
+    .replace(/\(/g, '\\(')
+    .replace(/\)/g, '\\)')
+    .replace(/[^\x20-\x7E]/g, '');
+}
+
+function wrapPdfLines(text) {
+  const sanitized = sanitizePdfText(text);
+  if (!sanitized) {
+    return [''];
+  }
+  const words = sanitized.split(/\s+/);
+  const lines = [];
+  let current = '';
+  words.forEach((word) => {
+    if (!word) return;
+    const candidate = current ? `${current} ${word}` : word;
+    if (candidate.length > PDF_MAX_LINE_LENGTH) {
+      if (current) {
+        lines.push(current);
+        current = '';
+      }
+      if (word.length > PDF_MAX_LINE_LENGTH) {
+        for (let i = 0; i < word.length; i += PDF_MAX_LINE_LENGTH) {
+          lines.push(word.slice(i, i + PDF_MAX_LINE_LENGTH));
+        }
+      } else {
+        current = word;
+      }
+    } else {
+      current = candidate;
+    }
+  });
+  if (current) {
+    lines.push(current);
+  }
+  return lines.length ? lines : [''];
+}
+
+function pdfValue(value) {
+  const raw = value === null || value === undefined ? '' : String(value).trim();
+  if (!raw || raw === '—') {
+    return 'Sem informacao';
+  }
+  return raw.replace(/\u00a0/g, ' ');
+}
+
+function buildContentStream(entries, signature) {
+  const commands = [];
+  let textOpen = false;
+  let currentFont = null;
+  let currentSize = null;
+  let currentY = PDF_PAGE_HEIGHT - PDF_MARGIN;
+
+  const openText = () => {
+    if (textOpen) return;
+    commands.push('BT');
+    commands.push(`${PDF_LINE_HEIGHT.toFixed(2)} TL`);
+    commands.push(`${PDF_MARGIN.toFixed(2)} ${currentY.toFixed(2)} Td`);
+    textOpen = true;
+    currentFont = null;
+    currentSize = null;
+  };
+
+  const closeText = () => {
+    if (!textOpen) return;
+    commands.push('ET');
+    textOpen = false;
+  };
+
+  const setFont = (fontKey, size) => {
+    openText();
+    if (currentFont !== fontKey || currentSize !== size) {
+      commands.push(`/${fontKey} ${size.toFixed(2)} Tf`);
+      currentFont = fontKey;
+      currentSize = size;
+    }
+  };
+
+  const addSpacer = (lines = 1) => {
+    if (lines <= 0) return;
+    openText();
+    for (let i = 0; i < lines; i += 1) {
+      commands.push('T*');
+      currentY -= PDF_LINE_HEIGHT;
+    }
+  };
+
+  const addLine = (line, fontKey, size) => {
+    setFont(fontKey, size);
+    commands.push(`(${line}) Tj`);
+    commands.push('T*');
+    currentY -= PDF_LINE_HEIGHT;
+  };
+
+  entries.forEach((entry) => {
+    if (entry.type === 'spacer') {
+      addSpacer(entry.lines || 1);
+      return;
+    }
+    if (entry.type === 'signature') {
+      if (!signature) return;
+      closeText();
+      const drawY = Math.max(PDF_MARGIN, currentY - signature.heightPt - 10);
+      commands.push('q');
+      commands.push(
+        `${signature.widthPt.toFixed(2)} 0 0 ${signature.heightPt.toFixed(2)} ${PDF_MARGIN.toFixed(2)} ${drawY.toFixed(2)} cm`
+      );
+      commands.push('/Im1 Do');
+      commands.push('Q');
+      currentY = drawY - PDF_LINE_HEIGHT;
+      return;
+    }
+    const fontKey = entry.type === 'title' || entry.type === 'heading' ? 'F2' : 'F1';
+    const fontSize = entry.type === 'title' ? 16 : entry.type === 'heading' ? 13 : 11;
+    const lines = wrapPdfLines(entry.text || '');
+    lines.forEach((line) => addLine(line, fontKey, fontSize));
+    if (entry.spaceAfter) {
+      addSpacer(entry.spaceAfter);
+    }
+  });
+  closeText();
+  return `${commands.join('\n')}\n`;
+}
+
+function finalizePdf(definitions, rootObj) {
+  const header = encodePdfText('%PDF-1.4\n');
+  const objects = [];
+  const offsets = [0];
+  let offset = header.length;
+  definitions.forEach(({ num, builder }) => {
+    const parts = builder();
+    const objectBytes = concatUint8Arrays([
+      encodePdfText(`${num} 0 obj\n`),
+      ...parts,
+      encodePdfText('\nendobj\n'),
+    ]);
+    offsets[num] = offset;
+    offset += objectBytes.length;
+    objects.push(objectBytes);
+  });
+  const xrefStart = offset;
+  let xrefBody = '0000000000 65535 f \n';
+  for (let i = 1; i < offsets.length; i += 1) {
+    xrefBody += `${offsets[i].toString().padStart(10, '0')} 00000 n \n`;
+  }
+  const xref = encodePdfText(`xref\n0 ${offsets.length}\n${xrefBody}`);
+  const trailer = encodePdfText(
+    `trailer\n<< /Size ${offsets.length} /Root ${rootObj} 0 R >>\nstartxref\n${xrefStart}\n%%EOF`
+  );
+  return concatUint8Arrays([header, ...objects, xref, trailer]);
+}
+
+function buildPdfBytes(entries, signature) {
+  const definitions = [];
+  const addObject = (builder) => {
+    const num = definitions.length + 1;
+    definitions.push({ num, builder });
+    return num;
+  };
+
+  const contentStream = buildContentStream(entries, signature);
+  const fontRegular = addObject(() => [encodePdfText('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>')]);
+  const fontBold = addObject(() => [encodePdfText('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>')]);
+
+  let imageObject = null;
+  if (signature) {
+    imageObject = addObject(() => [
+      encodePdfText(
+        `<< /Type /XObject /Subtype /Image /Width ${signature.widthPx} /Height ${signature.heightPx} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${signature.bytes.length} >>\nstream\n`
+      ),
+      signature.bytes,
+      encodePdfText('\nendstream\n'),
+    ]);
+  }
+
+  const streamBytes = encodePdfText(contentStream);
+  const contentObject = addObject(() => [
+    encodePdfText(`<< /Length ${streamBytes.length} >>\nstream\n`),
+    streamBytes,
+    encodePdfText('\nendstream\n'),
+  ]);
+
+  let pageObject;
+  let pagesObject;
+  pageObject = addObject(() => {
+    const resources = [`/Font << /F1 ${fontRegular} 0 R /F2 ${fontBold} 0 R >>`];
+    if (imageObject) {
+      resources.push(`/XObject << /Im1 ${imageObject} 0 R >>`);
+    }
+    return [
+      encodePdfText(
+        `<< /Type /Page /Parent ${pagesObject} 0 R /MediaBox [0 0 ${PDF_PAGE_WIDTH.toFixed(2)} ${PDF_PAGE_HEIGHT.toFixed(
+          2
+        )}] /Contents ${contentObject} 0 R /Resources << ${resources.join(' ')} >> >>`
+      ),
+    ];
+  });
+
+  pagesObject = addObject(() => [
+    encodePdfText(`<< /Type /Pages /Kids [${pageObject} 0 R] /Count 1 >>`),
+  ]);
+
+  const catalogObject = addObject(() => [
+    encodePdfText(`<< /Type /Catalog /Pages ${pagesObject} 0 R >>`),
+  ]);
+
+  return finalizePdf(definitions, catalogObject);
+}
+
+function loadImageFromDataUrl(dataUrl) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.decoding = 'async';
+    image.onload = () => resolve(image);
+    image.onerror = reject;
+    image.src = dataUrl;
+  });
+}
+
+function dataUrlToUint8Array(dataUrl) {
+  const base64 = dataUrl.split(',')[1] || '';
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+}
+
+async function prepareSignatureData(dataUrl) {
+  const image = await loadImageFromDataUrl(dataUrl);
+  const maxWidth = 420;
+  const maxHeight = 220;
+  const scale = Math.min(1, maxWidth / image.width, maxHeight / image.height);
+  const widthPx = Math.max(1, Math.round(image.width * scale));
+  const heightPx = Math.max(1, Math.round(image.height * scale));
+  const canvas = document.createElement('canvas');
+  canvas.width = widthPx;
+  canvas.height = heightPx;
+  const context = canvas.getContext('2d');
+  if (!context) {
+    throw new Error('Canvas não suportado.');
+  }
+  context.fillStyle = '#fff';
+  context.fillRect(0, 0, widthPx, heightPx);
+  context.drawImage(image, 0, 0, widthPx, heightPx);
+  const jpegDataUrl = canvas.toDataURL('image/jpeg', 0.92);
+  const bytes = dataUrlToUint8Array(jpegDataUrl);
+  return {
+    widthPx,
+    heightPx,
+    widthPt: widthPx * PX_TO_PT,
+    heightPt: heightPx * PX_TO_PT,
+    bytes,
+  };
+}
+
+class SimplePdfDocument {
+  constructor() {
+    this.entries = [];
+    this.signature = null;
+  }
+
+  addTitle(text) {
+    if (!text) return;
+    this.entries.push({ type: 'title', text: pdfValue(text), spaceAfter: 1 });
+  }
+
+  addSection(text) {
+    if (!text) return;
+    this.entries.push({ type: 'heading', text: pdfValue(text), spaceAfter: 1 });
+  }
+
+  addParagraph(text, spaceAfter = 0) {
+    this.entries.push({ type: 'text', text: pdfValue(text), spaceAfter });
+  }
+
+  addKeyValue(label, value) {
+    this.entries.push({ type: 'text', text: `${label}: ${pdfValue(value)}` });
+  }
+
+  addSpacer(lines = 1) {
+    if (lines > 0) {
+      this.entries.push({ type: 'spacer', lines });
+    }
+  }
+
+  async attachSignature(dataUrl) {
+    this.signature = await prepareSignatureData(dataUrl);
+  }
+
+  addSignaturePlaceholder() {
+    if (this.signature) {
+      this.entries.push({ type: 'signature' });
+    }
+  }
+
+  async save(filename) {
+    const bytes = buildPdfBytes(this.entries, this.signature);
+    const blob = new Blob([bytes], { type: 'application/pdf' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    setTimeout(() => {
+      URL.revokeObjectURL(url);
+      link.remove();
+    }, 0);
+  }
+}
+
 async function generateCompanyPdf(company) {
-  if (!company || !window.jspdf?.jsPDF) {
+  if (!company) {
     showError('Não foi possível gerar o PDF.');
     return;
   }
-  const doc = new window.jspdf.jsPDF({ unit: 'mm', format: 'a4' });
-  const margin = 16;
-  let cursorY = margin + 10;
-  doc.setFontSize(16);
-  doc.text('Documento de cadastro de empresa', margin, margin);
-  doc.setFontSize(11);
-  doc.text(`Gerado em ${new Date().toLocaleString('pt-BR')}`, margin, margin + 6);
+  try {
+    const doc = new SimplePdfDocument();
+    doc.addTitle('Documento de cadastro de empresa');
+    doc.addParagraph(`Gerado em ${new Date().toLocaleString('pt-BR')}`);
+    doc.addSpacer();
 
-  const section = (title) => {
-    doc.setFont('helvetica', 'bold');
-    doc.text(title, margin, cursorY);
-    cursorY += 6;
-    doc.setFont('helvetica', 'normal');
-  };
+    doc.addSection('Identificacao');
+    doc.addKeyValue('ID', company.id);
+    doc.addKeyValue('Nome fantasia', company.fantasy_name);
+    doc.addKeyValue('Razao social', company.corporate_name);
+    doc.addKeyValue('CNPJ', company.cnpj);
+    doc.addKeyValue('Setor', company.sector);
+    doc.addKeyValue('Status', formatStatus(company.status));
+    doc.addSpacer();
 
-  const addLines = (pairs) => {
-    pairs.forEach(([label, value]) => {
-      const text = `${label}: ${value || '—'}`;
-      const lines = doc.splitTextToSize(text, 180);
-      lines.forEach((line) => {
-        doc.text(line, margin, cursorY);
-        cursorY += 5;
-      });
-      cursorY += 1;
-    });
-    cursorY += 2;
-  };
+    doc.addSection('Contatos');
+    doc.addKeyValue('E-mail', company.email);
+    doc.addKeyValue('Telefone', company.phone);
+    doc.addKeyValue('Celular', company.cel);
+    doc.addKeyValue('WhatsApp', company.whatsapp);
+    doc.addKeyValue('Instagram', company.instagram);
+    doc.addSpacer();
 
-  section('Identificação');
-  addLines([
-    ['ID', company.id],
-    ['Nome fantasia', company.fantasy_name],
-    ['Razão social', company.corporate_name],
-    ['CNPJ', company.cnpj],
-    ['Setor', company.sector],
-    ['Status', formatStatus(company.status)],
-  ]);
+    doc.addSection('Endereco');
+    doc.addKeyValue('Endereco', company.address);
+    doc.addKeyValue('Cidade', company.city);
+    doc.addKeyValue('Estado', company.state);
+    doc.addKeyValue('CEP', company.zip);
+    doc.addSpacer();
 
-  section('Contatos');
-  addLines([
-    ['E-mail', company.email],
-    ['Telefone', company.phone],
-    ['Celular', company.cel],
-    ['WhatsApp', company.whatsapp],
-    ['Instagram', company.instagram],
-  ]);
+    doc.addSection('Financeiro');
+    doc.addKeyValue('Plano', company.plan_type);
+    doc.addKeyValue('Valor', formatCurrency(company.value));
+    doc.addKeyValue('Taxa de comissao', formatPercent(company.commission_rate));
+    doc.addKeyValue('Vencimento', formatDateOnly(company.due_date));
+    doc.addSpacer();
 
-  section('Endereço');
-  addLines([
-    ['Endereço', company.address],
-    ['Cidade', company.city],
-    ['Estado', company.state],
-    ['CEP', company.zip],
-  ]);
+    doc.addSection('Servicos e comunicacao');
+    doc.addKeyValue('Servicos contratados', describeOptions(company.services_contracted, SERVICE_LABELS));
+    doc.addKeyValue('Canais autorizados', describeOptions(company.marketing_authorizations, MARKETING_LABELS));
+    doc.addSpacer();
 
-  section('Financeiro');
-  addLines([
-    ['Plano', company.plan_type],
-    ['Valor', formatCurrency(company.value)],
-    ['Taxa de comissão', formatPercent(company.commission_rate)],
-    ['Vencimento', formatDateOnly(company.due_date)],
-  ]);
+    doc.addSection('Observacoes');
+    doc.addKeyValue('Observacoes', company.note);
+    doc.addKeyValue('Motivo de reprovacao', company.rejection_reason);
+    doc.addSpacer();
 
-  section('Observações');
-  addLines([
-    ['Observações', company.note],
-  ]);
+    const signatureData = await resolveSignatureData(company);
+    if (signatureData) {
+      try {
+        await doc.attachSignature(signatureData);
+        doc.addSection('Assinatura digital');
+        doc.addSpacer();
+        doc.addSignaturePlaceholder();
+        doc.addSpacer();
+      } catch (error) {
+        console.warn('Não foi possível processar a assinatura', error);
+      }
+    }
 
-  const signatureData = await resolveSignatureData(company);
-  if (signatureData) {
-    doc.setFont('helvetica', 'bold');
-    doc.text('Assinatura', margin, cursorY);
-    cursorY += 4;
-    doc.setFont('helvetica', 'normal');
-    doc.addImage(signatureData, getImageFormat(signatureData), margin, cursorY, 70, 30);
-    cursorY += 36;
+    doc.addParagraph(`Responsavel: ${profile?.name || 'Sem informacao'}`);
+
+    const safeName = (value) =>
+      String(value || '')
+        .normalize('NFD')
+        .replace(/[^\w\s-]/g, '')
+        .trim()
+        .replace(/\s+/g, '-')
+        .toLowerCase();
+
+    const filename = ['empresa', company.id, safeName(company.fantasy_name)]
+      .filter(Boolean)
+      .join('-')
+      .concat('.pdf');
+
+    await doc.save(filename);
+  } catch (error) {
+    console.error(error);
+    showError('Não foi possível gerar o PDF.');
   }
-
-  doc.text(`Responsável: ${profile?.name || '—'}`, margin, cursorY + 4);
-  const blobUrl = doc.output('bloburl');
-  window.open(blobUrl, '_blank', 'noopener');
 }
 
 async function handleExportCompanyPdf(id, button) {
@@ -726,6 +1138,7 @@ async function init() {
   });
 
   exportPdfBtn?.addEventListener('click', exportTableToPdf);
+  exportCsvBtn?.addEventListener('click', exportTableToCsv);
   if (canCreate) {
     cnpjLookupBtn?.addEventListener('click', lookupCnpj);
   }
