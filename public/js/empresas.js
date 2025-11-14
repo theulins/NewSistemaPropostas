@@ -329,40 +329,10 @@ function exportTableToPdf() {
     showError('Não há dados para exportar. Faça uma busca antes.');
     return;
   }
-  const originalText = exportPdfBtn?.textContent;
-  if (exportPdfBtn) {
-    exportPdfBtn.disabled = true;
-    exportPdfBtn.textContent = 'Gerando...';
+  if (!window.jspdf?.jsPDF) {
+    showError('Biblioteca de PDF não carregada. Verifique sua conexão.');
+    return;
   }
-  try {
-    const doc = new SimplePdfDocument();
-    doc.addTitle('Empresas cadastradas');
-    doc.addParagraph(`Emitido em ${new Date().toLocaleString('pt-BR')}`);
-    const filterSummary = buildFilterSummary();
-    if (filterSummary) {
-      doc.addParagraph(`Filtros: ${filterSummary}`);
-    }
-    doc.addSpacer();
-    rows.forEach((row, index) => {
-      const values = extractRowValues(row);
-      doc.addParagraph(`${index + 1}. ${pdfValue(values[1])} (ID ${pdfValue(values[0])})`);
-      doc.addParagraph(`CNPJ: ${pdfValue(values[2])} - ${pdfValue(values[3])}/${pdfValue(values[4])}`);
-      doc.addParagraph(
-        `Setor: ${pdfValue(values[5])} - Status: ${pdfValue(values[6])} - Atualizado: ${pdfValue(values[7])}`
-      );
-      doc.addSpacer();
-    });
-    await doc.save(`empresas-${new Date().toISOString().slice(0, 10)}.pdf`);
-  } catch (error) {
-    console.error(error);
-    showError('Não foi possível gerar o PDF.');
-  } finally {
-    if (exportPdfBtn) {
-      exportPdfBtn.disabled = false;
-      exportPdfBtn.textContent = originalText || 'Exportar PDF';
-    }
-  }
-}
 
   const doc = new window.jspdf.jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
   const margin = 12;
@@ -370,37 +340,49 @@ function exportTableToPdf() {
   const usableWidth = columns.reduce((sum, width) => sum + width, 0);
   const headerLabels = TABLE_HEADERS;
   const filterSummary = buildFilterSummary();
-  const lines = [];
-  lines.push(['Empresas cadastradas']);
-  lines.push(['Emitido em', new Date().toLocaleString('pt-BR')]);
+
+  doc.setFontSize(16);
+  doc.text('Empresas cadastradas', margin, margin);
+  doc.setFontSize(10);
+  doc.text(`Emitido em ${new Date().toLocaleString('pt-BR')}`, margin, margin + 6);
   if (filterSummary) {
-    lines.push(['Filtros', filterSummary]);
+    doc.text(`Filtros: ${filterSummary}`, margin, margin + 12, { maxWidth: usableWidth });
   }
-  lines.push(TABLE_HEADERS);
+
+  let cursorY = margin + (filterSummary ? 20 : 16);
+  const pageHeight = doc.internal.pageSize.getHeight();
+
+  const drawRow = (values, { header = false } = {}) => {
+    doc.setFont('helvetica', header ? 'bold' : 'normal');
+    const processed = values.map((value, index) => {
+      const content = value || '—';
+      const width = columns[index] - 2;
+      return doc.splitTextToSize(content, width);
+    });
+    const lineHeight = header ? 6 : 5;
+    const rowHeight = Math.max(...processed.map((lines) => lines.length)) * lineHeight + 2;
+    if (!header && cursorY + rowHeight > pageHeight - margin) {
+      doc.addPage();
+      cursorY = margin;
+      drawRow(headerLabels, { header: true });
+    }
+    let cursorX = margin;
+    processed.forEach((lines, index) => {
+      doc.text(lines, cursorX, cursorY, { baseline: 'top' });
+      cursorX += columns[index];
+    });
+    doc.setDrawColor(180);
+    doc.line(margin, cursorY + rowHeight, margin + usableWidth, cursorY + rowHeight);
+    cursorY += rowHeight + 2;
+  };
+
+  drawRow(headerLabels, { header: true });
   rows.forEach((row) => {
     const values = extractRowValues(row);
     drawRow(values);
   });
 
-  const csvContent = lines
-    .map((cells) =>
-      cells
-        .map((cell) => {
-          const safe = (cell || '').replace(/"/g, '""');
-          return `"${safe}"`;
-        })
-        .join(';')
-    )
-    .join('\r\n');
-  const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = `empresas-${new Date().toISOString().slice(0, 10)}.csv`;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
+  doc.save(`empresas-${new Date().toISOString().slice(0, 10)}.pdf`);
 }
 
 function exportTableToCsv() {
@@ -624,6 +606,12 @@ async function handleDeleteCompany(id) {
   }
 }
 
+function getImageFormat(dataUrl) {
+  if (dataUrl.startsWith('data:image/png')) return 'PNG';
+  if (dataUrl.startsWith('data:image/jpeg') || dataUrl.startsWith('data:image/jpg')) return 'JPEG';
+  return 'PNG';
+}
+
 async function fetchImageAsDataUrl(src) {
   const response = await fetch(src);
   if (!response.ok) {
@@ -682,143 +670,52 @@ async function generateCompanyPdf(company) {
     doc.setFont('helvetica', 'normal');
   };
 
-  const closeText = () => {
-    if (!textOpen) return;
-    commands.push('ET');
-    textOpen = false;
+  const addLines = (pairs) => {
+    pairs.forEach(([label, value]) => {
+      const text = `${label}: ${value || '—'}`;
+      const lines = doc.splitTextToSize(text, 180);
+      lines.forEach((line) => {
+        doc.text(line, margin, cursorY);
+        cursorY += 5;
+      });
+      cursorY += 1;
+    });
+    cursorY += 2;
   };
 
-  const setFont = (fontKey, size) => {
-    openText();
-    if (currentFont !== fontKey || currentSize !== size) {
-      commands.push(`/${fontKey} ${size.toFixed(2)} Tf`);
-      currentFont = fontKey;
-      currentSize = size;
-    }
-  };
-
-  const addSpacer = (lines = 1) => {
-    if (lines <= 0) return;
-    openText();
-    for (let i = 0; i < lines; i += 1) {
-      commands.push('T*');
-      currentY -= PDF_LINE_HEIGHT;
-    }
-  };
-
-  const addLine = (line, fontKey, size) => {
-    setFont(fontKey, size);
-    commands.push(`(${line}) Tj`);
-    commands.push('T*');
-    currentY -= PDF_LINE_HEIGHT;
-  };
-
-  entries.forEach((entry) => {
-    if (entry.type === 'spacer') {
-      addSpacer(entry.lines || 1);
-      return;
-    }
-    if (entry.type === 'signature') {
-      if (!signature) return;
-      closeText();
-      const drawY = Math.max(PDF_MARGIN, currentY - signature.heightPt - 10);
-      commands.push('q');
-      commands.push(
-        `${signature.widthPt.toFixed(2)} 0 0 ${signature.heightPt.toFixed(2)} ${PDF_MARGIN.toFixed(2)} ${drawY.toFixed(2)} cm`
-      );
-      commands.push('/Im1 Do');
-      commands.push('Q');
-      currentY = drawY - PDF_LINE_HEIGHT;
-      return;
-    }
-    const fontKey = entry.type === 'title' || entry.type === 'heading' ? 'F2' : 'F1';
-    const fontSize = entry.type === 'title' ? 16 : entry.type === 'heading' ? 13 : 11;
-    const lines = wrapPdfLines(entry.text || '');
-    lines.forEach((line) => addLine(line, fontKey, fontSize));
-    if (entry.spaceAfter) {
-      addSpacer(entry.spaceAfter);
-    }
-  });
-  closeText();
-  return `${commands.join('\n')}\n`;
-}
-
-function finalizePdf(definitions, rootObj) {
-  const header = encodePdfText('%PDF-1.4\n');
-  const objects = [];
-  const offsets = [0];
-  let offset = header.length;
-  definitions.forEach(({ num, builder }) => {
-    const parts = builder();
-    const objectBytes = concatUint8Arrays([
-      encodePdfText(`${num} 0 obj\n`),
-      ...parts,
-      encodePdfText('\nendobj\n'),
-    ]);
-    offsets[num] = offset;
-    offset += objectBytes.length;
-    objects.push(objectBytes);
-  });
-  const xrefStart = offset;
-  let xrefBody = '0000000000 65535 f \n';
-  for (let i = 1; i < offsets.length; i += 1) {
-    xrefBody += `${offsets[i].toString().padStart(10, '0')} 00000 n \n`;
-  }
-  const xref = encodePdfText(`xref\n0 ${offsets.length}\n${xrefBody}`);
-  const trailer = encodePdfText(
-    `trailer\n<< /Size ${offsets.length} /Root ${rootObj} 0 R >>\nstartxref\n${xrefStart}\n%%EOF`
-  );
-  return concatUint8Arrays([header, ...objects, xref, trailer]);
-}
-
-function buildPdfBytes(entries, signature) {
-  const definitions = [];
-  const addObject = (builder) => {
-    const num = definitions.length + 1;
-    definitions.push({ num, builder });
-    return num;
-  };
-
-  const contentStream = buildContentStream(entries, signature);
-  const fontRegular = addObject(() => [encodePdfText('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>')]);
-  const fontBold = addObject(() => [encodePdfText('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>')]);
-
-  let imageObject = null;
-  if (signature) {
-    imageObject = addObject(() => [
-      encodePdfText(
-        `<< /Type /XObject /Subtype /Image /Width ${signature.widthPx} /Height ${signature.heightPx} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${signature.bytes.length} >>\nstream\n`
-      ),
-      signature.bytes,
-      encodePdfText('\nendstream\n'),
-    ]);
-  }
-
-  const streamBytes = encodePdfText(contentStream);
-  const contentObject = addObject(() => [
-    encodePdfText(`<< /Length ${streamBytes.length} >>\nstream\n`),
-    streamBytes,
-    encodePdfText('\nendstream\n'),
+  section('Identificação');
+  addLines([
+    ['ID', company.id],
+    ['Nome fantasia', company.fantasy_name],
+    ['Razão social', company.corporate_name],
+    ['CNPJ', company.cnpj],
+    ['Setor', company.sector],
+    ['Status', formatStatus(company.status)],
   ]);
 
-  let pageObject;
-  let pagesObject;
-  pageObject = addObject(() => {
-    const resources = [`/Font << /F1 ${fontRegular} 0 R /F2 ${fontBold} 0 R >>`];
-    if (imageObject) {
-      resources.push(`/XObject << /Im1 ${imageObject} 0 R >>`);
-    }
-    return [
-      encodePdfText(
-        `<< /Type /Page /Parent ${pagesObject} 0 R /MediaBox [0 0 ${PDF_PAGE_WIDTH.toFixed(2)} ${PDF_PAGE_HEIGHT.toFixed(
-          2
-        )}] /Contents ${contentObject} 0 R /Resources << ${resources.join(' ')} >> >>`
-      ),
-    ];
-  });
+  section('Contatos');
+  addLines([
+    ['E-mail', company.email],
+    ['Telefone', company.phone],
+    ['Celular', company.cel],
+    ['WhatsApp', company.whatsapp],
+    ['Instagram', company.instagram],
+  ]);
 
-  pagesObject = addObject(() => [
-    encodePdfText(`<< /Type /Pages /Kids [${pageObject} 0 R] /Count 1 >>`),
+  section('Endereço');
+  addLines([
+    ['Endereço', company.address],
+    ['Cidade', company.city],
+    ['Estado', company.state],
+    ['CEP', company.zip],
+  ]);
+
+  section('Financeiro');
+  addLines([
+    ['Plano', company.plan_type],
+    ['Valor', formatCurrency(company.value)],
+    ['Taxa de comissão', formatPercent(company.commission_rate)],
+    ['Vencimento', formatDateOnly(company.due_date)],
   ]);
 
   section('Serviços e comunicação');
@@ -833,66 +730,14 @@ function buildPdfBytes(entries, signature) {
     ['Motivo de reprovação', company.rejection_reason],
   ]);
 
-  return finalizePdf(definitions, catalogObject);
-}
-
-function loadImageFromDataUrl(dataUrl) {
-  return new Promise((resolve, reject) => {
-    const image = new Image();
-    image.decoding = 'async';
-    image.onload = () => resolve(image);
-    image.onerror = reject;
-    image.src = dataUrl;
-  });
-}
-
-function dataUrlToUint8Array(dataUrl) {
-  const base64 = dataUrl.split(',')[1] || '';
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i += 1) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return bytes;
-}
-
-async function prepareSignatureData(dataUrl) {
-  const image = await loadImageFromDataUrl(dataUrl);
-  const maxWidth = 420;
-  const maxHeight = 220;
-  const scale = Math.min(1, maxWidth / image.width, maxHeight / image.height);
-  const widthPx = Math.max(1, Math.round(image.width * scale));
-  const heightPx = Math.max(1, Math.round(image.height * scale));
-  const canvas = document.createElement('canvas');
-  canvas.width = widthPx;
-  canvas.height = heightPx;
-  const context = canvas.getContext('2d');
-  if (!context) {
-    throw new Error('Canvas não suportado.');
-  }
-  context.fillStyle = '#fff';
-  context.fillRect(0, 0, widthPx, heightPx);
-  context.drawImage(image, 0, 0, widthPx, heightPx);
-  const jpegDataUrl = canvas.toDataURL('image/jpeg', 0.92);
-  const bytes = dataUrlToUint8Array(jpegDataUrl);
-  return {
-    widthPx,
-    heightPx,
-    widthPt: widthPx * PX_TO_PT,
-    heightPt: heightPx * PX_TO_PT,
-    bytes,
-  };
-}
-
-class SimplePdfDocument {
-  constructor() {
-    this.entries = [];
-    this.signature = null;
-  }
-
-  addTitle(text) {
-    if (!text) return;
-    this.entries.push({ type: 'title', text: pdfValue(text), spaceAfter: 1 });
+  const signatureData = await resolveSignatureData(company);
+  if (signatureData) {
+    doc.setFont('helvetica', 'bold');
+    doc.text('Assinatura', margin, cursorY);
+    cursorY += 4;
+    doc.setFont('helvetica', 'normal');
+    doc.addImage(signatureData, getImageFormat(signatureData), margin, cursorY, 70, 30);
+    cursorY += 36;
   }
 
   doc.text(`Responsável: ${profile?.name || '—'}`, margin, cursorY + 4);
