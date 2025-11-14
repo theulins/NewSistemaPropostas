@@ -56,6 +56,7 @@ export const approvePending = async (req, res) => {
         value = ?,
         commission_rate = ?,
         due_date = ?,
+        rejection_reason = NULL,
         approved_at = NOW(),
         updated_by = ?,
         updated_at = NOW()
@@ -98,8 +99,8 @@ export const rejectPending = async (req, res) => {
     }
 
     await pool.query(
-      `UPDATE companies SET status = 'reprovado', updated_at = NOW(), updated_by = ? WHERE id = ?`,
-      [req.user?.id || null, company_id]
+      `UPDATE companies SET status = 'reprovado', rejection_reason = ?, updated_at = NOW(), updated_by = ? WHERE id = ?`,
+      [nullIfEmpty(reason), req.user?.id || null, company_id]
     );
 
     await pool.query(

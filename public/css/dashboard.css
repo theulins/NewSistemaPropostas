@@ -9,6 +9,9 @@ main{display:grid;gap:16px;margin-top:16px}
 .card-header input[type="month"],.card-header input[type="number"]{max-width:160px;margin:0}
 .list-table{overflow-x:auto}
 .list-table table{min-width:540px}
+.list-table table th,.list-table table td{text-align:center;vertical-align:middle}
+.list-table table td:first-child{text-align:left}
+.list-table .empty{color:var(--muted);font-style:italic}
 .badge{display:inline-flex;align-items:center;gap:6px}
 @media (max-width:640px){
   .card-header{flex-direction:column;align-items:flex-start}
