@@ -16,10 +16,25 @@ const signaturePad = document.getElementById('signature-pad');
 const signatureDataInput = document.getElementById('signature-data');
 const clearSignature = document.getElementById('clear-signature');
 const exportPdfBtn = document.getElementById('export-pdf');
+const exportCsvBtn = document.getElementById('export-csv');
 const cnpjLookupBtn = document.getElementById('cnpj-lookup-btn');
 const cnpjLookupStatus = document.getElementById('cnpj-lookup-status');
 const formTitle = document.getElementById('form-title');
 const submitButton = companyForm?.querySelector('button[type="submit"]');
+
+const TABLE_HEADERS = ['ID', 'Nome fantasia', 'CNPJ', 'Cidade', 'UF', 'Setor', 'Status', 'Atualizado'];
+const SERVICE_LABELS = {
+  spc: 'SPC',
+  nfe: 'NF-e',
+  nfce: 'NFC-e',
+  cte: 'CT-e',
+  cfe: 'CF-e',
+};
+const MARKETING_LABELS = {
+  site: 'Site',
+  whatsapp: 'WhatsApp',
+  email: 'E-mail marketing',
+};
 
 let ctx;
 let drawing = false;
@@ -131,6 +146,9 @@ function showView(view) {
     btn.classList.toggle('primary', btn.dataset.view === view);
     btn.classList.toggle('ghost', btn.dataset.view !== view);
   });
+  if (showForm) {
+    requestAnimationFrame(() => resizeCanvas());
+  }
 }
 
 function getSignatureStrokeColor() {
@@ -250,9 +268,18 @@ function bindSignaturePad() {
 }
 
 function preparePayload(formData) {
-  const payload = {};
+  const payload = {
+    services_contracted: [],
+    marketing_authorizations: [],
+  };
   formData.forEach((value, key) => {
     if (key === 'commission_exempt') return;
+    if (Array.isArray(payload[key])) {
+      if (value) {
+        payload[key].push(typeof value === 'string' ? value.trim() : value);
+      }
+      return;
+    }
     payload[key] = typeof value === 'string' ? value.trim() : value;
   });
   payload.commission_exempt = formData.get('commission_exempt') ? 1 : 0;
@@ -288,8 +315,16 @@ function buildFilterSummary() {
   return summary.join(' • ');
 }
 
+function getTableRows() {
+  return Array.from(companiesTable.querySelectorAll('tr[data-id]'));
+}
+
+function extractRowValues(row) {
+  return TABLE_HEADERS.map((_, index) => row.children[index]?.textContent.trim() || '');
+}
+
 function exportTableToPdf() {
-  const rows = Array.from(companiesTable.querySelectorAll('tr'));
+  const rows = getTableRows();
   if (!rows.length) {
     showError('Não há dados para exportar. Faça uma busca antes.');
     return;
@@ -303,7 +338,7 @@ function exportTableToPdf() {
   const margin = 12;
   const columns = [15, 60, 45, 35, 12, 32, 30, 39];
   const usableWidth = columns.reduce((sum, width) => sum + width, 0);
-  const headerLabels = ['ID', 'Nome fantasia', 'CNPJ', 'Cidade', 'UF', 'Setor', 'Status', 'Atualizado'];
+  const headerLabels = TABLE_HEADERS;
   const filterSummary = buildFilterSummary();
 
   doc.setFontSize(16);
@@ -343,13 +378,50 @@ function exportTableToPdf() {
 
   drawRow(headerLabels, { header: true });
   rows.forEach((row) => {
-    const values = Array.from(row.children)
-      .slice(0, headerLabels.length)
-      .map((cell) => cell.textContent.trim());
+    const values = extractRowValues(row);
     drawRow(values);
   });
 
   doc.save(`empresas-${new Date().toISOString().slice(0, 10)}.pdf`);
+}
+
+function exportTableToCsv() {
+  const rows = getTableRows();
+  if (!rows.length) {
+    showError('Não há dados para exportar. Faça uma busca antes.');
+    return;
+  }
+  const filterSummary = buildFilterSummary();
+  const lines = [];
+  lines.push(['Empresas cadastradas']);
+  lines.push(['Emitido em', new Date().toLocaleString('pt-BR')]);
+  if (filterSummary) {
+    lines.push(['Filtros', filterSummary]);
+  }
+  lines.push(TABLE_HEADERS);
+  rows.forEach((row) => {
+    lines.push(extractRowValues(row));
+  });
+
+  const csvContent = lines
+    .map((cells) =>
+      cells
+        .map((cell) => {
+          const safe = (cell || '').replace(/"/g, '""');
+          return `"${safe}"`;
+        })
+        .join(';')
+    )
+    .join('\r\n');
+  const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `empresas-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 }
 
 async function lookupCnpj() {
@@ -409,6 +481,15 @@ async function lookupCnpj() {
 async function fetchCompanyDetails(id) {
   const response = await authFetch(`/empresas/${id}`);
   return response.data;
+}
+
+function setCheckboxGroup(fieldName, values = []) {
+  if (!companyForm) return;
+  const normalized = Array.isArray(values) ? values : values ? [values] : [];
+  const selected = new Set(normalized);
+  companyForm.querySelectorAll(`input[name="${fieldName}"]`).forEach((checkbox) => {
+    checkbox.checked = selected.has(checkbox.value);
+  });
 }
 
 function setFormMode(mode = 'create') {
@@ -482,6 +563,8 @@ async function populateForm(company) {
   if (companyForm.elements.commission_exempt) {
     companyForm.elements.commission_exempt.checked = Boolean(company.commission_exempt);
   }
+  setCheckboxGroup('services_contracted', company.services_contracted || []);
+  setCheckboxGroup('marketing_authorizations', company.marketing_authorizations || []);
   await displaySignaturePreview(company.signature_url);
 }
 
@@ -498,9 +581,9 @@ async function startEditingCompany(id) {
   try {
     const company = await fetchCompanyDetails(id);
     editingCompanyId = company.id;
-    await populateForm(company);
     setFormMode('edit');
     showView('form');
+    await populateForm(company);
   } catch (error) {
     showError(error.message);
   }
@@ -558,12 +641,21 @@ async function resolveSignatureData(company) {
   return null;
 }
 
+function describeOptions(values, labels) {
+  const source = Array.isArray(values) ? values : [];
+  const readable = source
+    .map((value) => labels[value] || null)
+    .filter(Boolean);
+  return readable.length ? readable.join(', ') : '—';
+}
+
 async function generateCompanyPdf(company) {
-  if (!company || !window.jspdf?.jsPDF) {
+  const jsPDF = window.jspdf?.jsPDF;
+  if (!company || !jsPDF) {
     showError('Não foi possível gerar o PDF.');
     return;
   }
-  const doc = new window.jspdf.jsPDF({ unit: 'mm', format: 'a4' });
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   const margin = 16;
   let cursorY = margin + 10;
   doc.setFontSize(16);
@@ -626,9 +718,16 @@ async function generateCompanyPdf(company) {
     ['Vencimento', formatDateOnly(company.due_date)],
   ]);
 
+  section('Serviços e comunicação');
+  addLines([
+    ['Serviços contratados', describeOptions(company.services_contracted, SERVICE_LABELS)],
+    ['Canais autorizados', describeOptions(company.marketing_authorizations, MARKETING_LABELS)],
+  ]);
+
   section('Observações');
   addLines([
     ['Observações', company.note],
+    ['Motivo de reprovação', company.rejection_reason],
   ]);
 
   const signatureData = await resolveSignatureData(company);
@@ -642,8 +741,21 @@ async function generateCompanyPdf(company) {
   }
 
   doc.text(`Responsável: ${profile?.name || '—'}`, margin, cursorY + 4);
-  const blobUrl = doc.output('bloburl');
-  window.open(blobUrl, '_blank', 'noopener');
+
+  const safeName = (value) =>
+    String(value || '')
+      .normalize('NFD')
+      .replace(/[^\w\s-]/g, '')
+      .trim()
+      .replace(/\s+/g, '-')
+      .toLowerCase();
+
+  const filename = ['empresa', company.id, safeName(company.fantasy_name)]
+    .filter(Boolean)
+    .join('-')
+    .concat('.pdf');
+
+  doc.save(filename);
 }
 
 async function handleExportCompanyPdf(id, button) {
@@ -726,6 +838,7 @@ async function init() {
   });
 
   exportPdfBtn?.addEventListener('click', exportTableToPdf);
+  exportCsvBtn?.addEventListener('click', exportTableToCsv);
   if (canCreate) {
     cnpjLookupBtn?.addEventListener('click', lookupCnpj);
   }

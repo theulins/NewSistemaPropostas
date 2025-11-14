@@ -20,19 +20,37 @@ function formatDate(value) {
   }).format(new Date(value));
 }
 
+const numberFormatter = new Intl.NumberFormat('pt-BR');
 function formatCurrency(value) {
   return new Intl.NumberFormat('pt-BR', {
     style: 'currency',
     currency: 'BRL',
-  }).format(value || 0);
+  }).format(Number(value || 0));
+}
+
+function formatNumber(value) {
+  return numberFormatter.format(Number(value || 0));
 }
 
 async function loadSummary() {
   const data = await authFetch('/dashboard/summary');
-  kpiGrid.innerHTML = `
-    <div class="kpi" role="status"><span>Usuários</span><strong>${data.totalUsers}</strong></div>
-    <div class="kpi" role="status"><span>Empresas</span><strong>${data.totalCompanies}</strong></div>
-  `;
+  const kpis = [
+    { label: 'Usuários', value: formatNumber(data.totalUsers) },
+    { label: 'Empresas cadastradas', value: formatNumber(data.totalCompanies) },
+    { label: 'Ativas', value: formatNumber(data.activeCompanies) },
+    { label: 'Pendentes', value: formatNumber(data.pendingCompanies) },
+    { label: 'Reprovadas', value: formatNumber(data.rejectedCompanies) },
+    { label: 'Receita ativa', value: formatCurrency(data.activeValue) },
+    { label: 'Ticket médio', value: formatCurrency(data.averageTicket) },
+  ];
+  kpiGrid.innerHTML = kpis
+    .map((item) => `<div class="kpi" role="status"><span>${item.label}</span><strong>${item.value}</strong></div>`)
+    .join('');
+
+  if (!data.recent?.length) {
+    recentList.innerHTML = '<tr><td colspan="3" class="empty">Sem movimentações recentes.</td></tr>';
+    return;
+  }
 
   recentList.innerHTML = data.recent
     .map(

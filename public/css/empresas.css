@@ -6,6 +6,8 @@
 .toggle-group button{flex:1;min-width:120px}
 .card-header{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
 .card-header button{flex:0 0 auto}
+.card-header .export-actions{display:flex;gap:8px;flex-wrap:wrap}
+.card-header .export-actions button{flex:1 1 150px}
 .table-wrapper{overflow-x:auto}
 .table-wrapper table{min-width:760px}
 .form-section{display:grid;gap:12px}
@@ -19,6 +21,12 @@ legend{padding:0 8px;font-weight:600;color:var(--muted)}
 canvas.signature{width:100%;height:180px;background:#ffffff05;border-radius:8px}
 .signature-actions{display:flex;gap:10px;margin-top:8px}
 .signature-actions button{flex:1}
+.option-group{display:flex;flex-direction:column;gap:8px;margin-top:10px}
+.option-group span{font-weight:600;color:var(--muted)}
+.option-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px}
+.option-grid label{display:flex;align-items:center;gap:6px;padding:8px 10px;border-radius:10px;border:1px solid #ffffff22;background:#ffffff0d}
+.option-grid input{width:auto}
+:root.light .option-grid label{background:#f5f6fb;border-color:#dfe3f5;color:#0b1020}
 .table-wrapper td button{min-width:96px}
 .row-actions{display:flex;flex-wrap:wrap;gap:6px}
 .row-actions button{flex:1 1 90px;padding:6px 8px;font-size:.85rem}
