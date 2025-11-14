@@ -111,38 +111,238 @@ export function setupLogout() {
   }
 }
 
-function ensureSwal() {
-  if (!window.Swal) {
-    console.error('SweetAlert2 não foi carregado.');
-    return false;
+const supportsDialog = typeof HTMLDialogElement !== 'undefined';
+let modalDialog;
+
+function ensureModalDialog() {
+  if (!supportsDialog) {
+    return null;
   }
-  return true;
+  if (!modalDialog) {
+    modalDialog = document.createElement('dialog');
+    modalDialog.className = 'app-dialog';
+    document.body.appendChild(modalDialog);
+  }
+  return modalDialog;
+}
+
+function fallbackModal({ mode, title, text, inputValidator, defaultValue = '' }) {
+  if (mode === 'confirm') {
+    return { confirmed: window.confirm(text || title || '') };
+  }
+  if (mode === 'prompt') {
+    const value = window.prompt(text || title || '', defaultValue);
+    if (value === null) {
+      return { confirmed: false, value: null };
+    }
+    if (inputValidator) {
+      const message = inputValidator(value);
+      if (message) {
+        window.alert(message);
+        return { confirmed: false, value: null };
+      }
+    }
+    return { confirmed: true, value };
+  }
+  if (title || text) {
+    window.alert(`${title ? `${title}\n` : ''}${text || ''}`);
+  }
+  return { confirmed: true };
+}
+
+function iconSymbol(icon) {
+  switch (icon) {
+    case 'error':
+      return '!';
+    case 'success':
+      return '✓';
+    case 'warning':
+      return '!';
+    case 'question':
+      return '?';
+    default:
+      return 'i';
+  }
+}
+
+function openModal({
+  title,
+  text,
+  icon = 'info',
+  confirmButtonText = 'Entendi',
+  cancelButtonText = 'Cancelar',
+  showCancel = false,
+  mode = 'alert',
+  inputLabel,
+  inputPlaceholder,
+  inputValidator,
+  defaultValue = '',
+} = {}) {
+  if (!supportsDialog) {
+    return Promise.resolve(
+      fallbackModal({ mode, title, text, inputValidator, defaultValue })
+    );
+  }
+
+  const dialog = ensureModalDialog();
+  if (!dialog) {
+    return Promise.resolve({ confirmed: true });
+  }
+  if (dialog.open) {
+    dialog.close();
+  }
+
+  return new Promise((resolve) => {
+    dialog.innerHTML = '';
+    const form = document.createElement('form');
+    form.className = 'app-dialog__panel';
+    form.method = 'dialog';
+
+    const iconBox = document.createElement('div');
+    iconBox.className = `app-dialog__icon app-dialog__icon--${icon}`;
+    iconBox.textContent = iconSymbol(icon);
+    form.appendChild(iconBox);
+
+    const content = document.createElement('div');
+    content.className = 'app-dialog__content';
+    if (title) {
+      const heading = document.createElement('h3');
+      heading.textContent = title;
+      content.appendChild(heading);
+    }
+    if (text) {
+      const paragraph = document.createElement('p');
+      paragraph.className = 'app-dialog__text';
+      paragraph.textContent = text;
+      content.appendChild(paragraph);
+    }
+    form.appendChild(content);
+
+    let input;
+    let feedback;
+    if (mode === 'prompt') {
+      const label = document.createElement('label');
+      label.className = 'app-dialog__input';
+      if (inputLabel) {
+        const span = document.createElement('span');
+        span.textContent = inputLabel;
+        label.appendChild(span);
+      }
+      input = document.createElement('input');
+      input.type = 'text';
+      input.value = defaultValue || '';
+      if (inputPlaceholder) {
+        input.placeholder = inputPlaceholder;
+      }
+      label.appendChild(input);
+      form.appendChild(label);
+      feedback = document.createElement('p');
+      feedback.className = 'app-dialog__feedback';
+      feedback.hidden = true;
+      form.appendChild(feedback);
+      input.addEventListener('input', () => {
+        feedback.hidden = true;
+      });
+    }
+
+    const actions = document.createElement('div');
+    actions.className = 'app-dialog__actions';
+    let cancelBtn;
+    if (showCancel) {
+      cancelBtn = document.createElement('button');
+      cancelBtn.type = 'button';
+      cancelBtn.className = 'ghost';
+      cancelBtn.dataset.action = 'cancel';
+      cancelBtn.textContent = cancelButtonText;
+      actions.appendChild(cancelBtn);
+    }
+    const confirmBtn = document.createElement('button');
+    confirmBtn.type = 'submit';
+    confirmBtn.className = 'primary';
+    confirmBtn.dataset.action = 'confirm';
+    confirmBtn.textContent = confirmButtonText;
+    actions.appendChild(confirmBtn);
+    form.appendChild(actions);
+
+    dialog.appendChild(form);
+
+    const teardown = [];
+    let resolved = false;
+    const finish = (result) => {
+      if (resolved) return;
+      resolved = true;
+      teardown.forEach((fn) => fn());
+      if (dialog.open) {
+        dialog.close();
+      }
+      dialog.innerHTML = '';
+      resolve(result);
+    };
+
+    const handleConfirm = () => {
+      if (mode === 'prompt' && input) {
+        const value = input.value.trim();
+        if (inputValidator) {
+          const message = inputValidator(value);
+          if (message) {
+            if (feedback) {
+              feedback.textContent = message;
+              feedback.hidden = false;
+            }
+            input.focus();
+            return;
+          }
+        }
+        finish({ confirmed: true, value });
+        return;
+      }
+      finish({ confirmed: true });
+    };
+
+    form.addEventListener('submit', (event) => {
+      event.preventDefault();
+      handleConfirm();
+    });
+    cancelBtn?.addEventListener('click', () => finish({ confirmed: false }));
+    const handleCancelEvent = (event) => {
+      event.preventDefault();
+      finish({ confirmed: false });
+    };
+    dialog.addEventListener('cancel', handleCancelEvent, { once: true });
+    const handleBackdropClick = (event) => {
+      if (event.target === dialog) {
+        finish({ confirmed: false });
+      }
+    };
+    dialog.addEventListener('click', handleBackdropClick);
+    teardown.push(() => dialog.removeEventListener('click', handleBackdropClick));
+
+    dialog.showModal();
+    if (input) {
+      input.focus();
+      input.select();
+    } else {
+      confirmBtn.focus();
+    }
+  });
 }
 
 export function showError(message, title = 'Algo deu errado') {
-  if (!ensureSwal()) {
-    console.error(message);
-    return Promise.resolve();
-  }
-  return Swal.fire({
-    icon: 'error',
+  return openModal({
     title,
     text: message,
+    icon: 'error',
     confirmButtonText: 'Entendi',
-  });
+  }).then(() => undefined);
 }
 
 export function showSuccess(message, title = 'Tudo certo!') {
-  if (!ensureSwal()) {
-    console.info(message);
-    return Promise.resolve();
-  }
-  return Swal.fire({
-    icon: 'success',
+  return openModal({
     title,
     text: message,
+    icon: 'success',
     confirmButtonText: 'Fechar',
-  });
+  }).then(() => undefined);
 }
 
 export async function confirmAction({
@@ -152,19 +352,16 @@ export async function confirmAction({
   confirmButtonText = 'Confirmar',
   cancelButtonText = 'Cancelar',
 } = {}) {
-  if (!ensureSwal()) {
-    return window.confirm(text || title || '');
-  }
-  const result = await Swal.fire({
+  const result = await openModal({
     title,
     text,
     icon,
-    showCancelButton: true,
-    focusCancel: true,
+    mode: 'confirm',
+    showCancel: true,
     confirmButtonText,
     cancelButtonText,
   });
-  return result.isConfirmed;
+  return Boolean(result?.confirmed);
 }
 
 export async function promptText({
@@ -176,39 +373,25 @@ export async function promptText({
   cancelButtonText = 'Cancelar',
   icon = 'question',
   inputValidator,
+  defaultValue = '',
 } = {}) {
-  if (!ensureSwal()) {
-    const value = window.prompt(text || title || '');
-    if (!value) {
-      return null;
-    }
-    if (inputValidator) {
-      const validationMessage = inputValidator(value);
-      if (validationMessage) {
-        console.warn(validationMessage);
-        return null;
-      }
-    }
-    return value;
-  }
-
-  const result = await Swal.fire({
+  const result = await openModal({
     title,
     text,
-    input: 'text',
-    inputLabel,
-    inputPlaceholder,
     icon,
-    showCancelButton: true,
-    focusCancel: true,
+    mode: 'prompt',
+    showCancel: true,
     confirmButtonText,
     cancelButtonText,
+    inputLabel,
+    inputPlaceholder,
     inputValidator,
+    defaultValue,
   });
-  if (!result.isConfirmed) {
+  if (!result?.confirmed) {
     return null;
   }
-  return result.value;
+  return result.value ?? '';
 }
 
 export async function initializePage(activePage) {
