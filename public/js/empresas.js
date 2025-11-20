@@ -655,93 +655,292 @@ async function generateCompanyPdf(company) {
     showError('Não foi possível gerar o PDF.');
     return;
   }
+
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
-  const margin = 16;
-  let cursorY = margin + 10;
-  doc.setFontSize(16);
-  doc.text('Documento de cadastro de empresa', margin, margin);
+  const margin = 15;
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const centerX = pageWidth / 2;
+  let cursorY = 20;
+  const lineHeight = 6;
+  const currentYear = new Date().getFullYear();
+
+  const get = (value) => (value ? String(value) : '');
+
+  const formatMoney = (value) => {
+    if (value == null || isNaN(value)) return '';
+    return formatCurrency ? formatCurrency(value) : Number(value).toFixed(2);
+  };
+
+  const formatDate = (value) => {
+    if (!value) return '';
+    return typeof formatDateOnly === 'function'
+      ? formatDateOnly(value)
+      : new Date(value).toLocaleDateString('pt-BR');
+  };
+
+  const hasService = (key) =>
+    Array.isArray(company.services_contracted) &&
+    company.services_contracted.includes(key);
+
+  const hasMarketing = (key) =>
+    Array.isArray(company.marketing_authorizations) &&
+    company.marketing_authorizations.includes(key);
+
+  const drawCheckbox = (label, x, y, checked) => {
+    const boxSize = 4;
+    doc.rect(x, y - boxSize + 1, boxSize, boxSize);
+    if (checked) {
+      doc.line(x + 0.8, y - boxSize + 1.8, x + boxSize - 0.8, y - 1.2);
+      doc.line(x + 0.8, y - 1.2, x + boxSize - 0.8, y - boxSize + 1.8);
+    }
+    doc.text(label, x + boxSize + 2, y);
+  };
+
+  // ===== CABEÇALHO =====
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(12);
+  doc.text(
+    'ASSOCIAÇÃO COMERCIAL, INDUSTRIAL E AGRÍCOLA DE UMUARAMA – ACIU',
+    centerX,
+    cursorY,
+    { align: 'center' }
+  );
+  cursorY += 8;
+
+  doc.setFontSize(14);
+  doc.text('PROPOSTA DE ADMISSÃO DE SÓCIO', centerX, cursorY, {
+    align: 'center',
+  });
+  cursorY += 7;
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10);
+  doc.text(`Ano: ${currentYear}`, centerX, cursorY, { align: 'center' });
+  cursorY += 10;
+
+  // ===== DADOS DA EMPRESA =====
+  doc.setFont('helvetica', 'bold');
   doc.setFontSize(11);
-  doc.text(`Gerado em ${new Date().toLocaleString('pt-BR')}`, margin, margin + 6);
+  doc.text('Dados da empresa', margin, cursorY);
+  cursorY += lineHeight;
 
-  const section = (title) => {
-    doc.setFont('helvetica', 'bold');
-    doc.text(title, margin, cursorY);
-    cursorY += 6;
-    doc.setFont('helvetica', 'normal');
-  };
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10);
 
-  const addLines = (pairs) => {
-    pairs.forEach(([label, value]) => {
-      const text = `${label}: ${value || '—'}`;
-      const lines = doc.splitTextToSize(text, 180);
-      lines.forEach((line) => {
-        doc.text(line, margin, cursorY);
-        cursorY += 5;
-      });
-      cursorY += 1;
-    });
-    cursorY += 2;
-  };
+  // Razão Social
+  doc.text(
+    `Razão Social: ${get(company.corporate_name)}`,
+    margin,
+    cursorY
+  );
+  cursorY += lineHeight;
 
-  section('Identificação');
-  addLines([
-    ['ID', company.id],
-    ['Nome fantasia', company.fantasy_name],
-    ['Razão social', company.corporate_name],
-    ['CNPJ', company.cnpj],
-    ['Setor', company.sector],
-    ['Status', formatStatus(company.status)],
-  ]);
+  // Denominação Comercial
+  doc.text(
+    `Denominação Comercial: ${get(company.fantasy_name)}`,
+    margin,
+    cursorY
+  );
+  cursorY += lineHeight;
 
-  section('Contatos');
-  addLines([
-    ['E-mail', company.email],
-    ['Telefone', company.phone],
-    ['Celular', company.cel],
-    ['WhatsApp', company.whatsapp],
-    ['Instagram', company.instagram],
-  ]);
+  // Endereço + CEP
+  doc.text(`Endereço: ${get(company.address)}`, margin, cursorY);
+  doc.text(
+    `CEP: ${get(company.zip)}`,
+    pageWidth - margin - 40,
+    cursorY
+  );
+  cursorY += lineHeight;
 
-  section('Endereço');
-  addLines([
-    ['Endereço', company.address],
-    ['Cidade', company.city],
-    ['Estado', company.state],
-    ['CEP', company.zip],
-  ]);
+  // E-mail
+  doc.text(`E-mail: ${get(company.email)}`, margin, cursorY);
+  cursorY += lineHeight;
 
-  section('Financeiro');
-  addLines([
-    ['Plano', company.plan_type],
-    ['Valor', formatCurrency(company.value)],
-    ['Taxa de comissão', formatPercent(company.commission_rate)],
-    ['Vencimento', formatDateOnly(company.due_date)],
-  ]);
+  // Instagram + Telefone
+  doc.text(`Instagram: ${get(company.instagram)}`, margin, cursorY);
+  doc.text(
+    `Telefone: ${get(company.phone)}`,
+    pageWidth - margin - 50,
+    cursorY
+  );
+  cursorY += lineHeight;
 
-  section('Serviços e comunicação');
-  addLines([
-    ['Serviços contratados', describeOptions(company.services_contracted, SERVICE_LABELS)],
-    ['Canais autorizados', describeOptions(company.marketing_authorizations, MARKETING_LABELS)],
-  ]);
+  // Cidade / Estado / CEL / WhatsApp
+  doc.text(`Cidade: ${get(company.city)}`, margin, cursorY);
+  doc.text(`Estado: ${get(company.state)}`, margin + 70, cursorY);
+  doc.text(`CEL: ${get(company.cel)}`, margin + 110, cursorY);
+  doc.text(
+    `WhatsApp: ${get(company.whatsapp)}`,
+    margin + 150,
+    cursorY
+  );
+  cursorY += lineHeight + 4;
 
-  section('Observações');
-  addLines([
-    ['Observações', company.note],
-    ['Motivo de reprovação', company.rejection_reason],
-  ]);
+  // ===== SERVIÇOS CONTRATADOS =====
+  doc.setFont('helvetica', 'bold');
+  doc.text('Serviços Contratados:', margin, cursorY);
+  cursorY += lineHeight;
 
-  const signatureData = await resolveSignatureData(company);
-  if (signatureData) {
-    doc.setFont('helvetica', 'bold');
-    doc.text('Assinatura', margin, cursorY);
+  doc.setFont('helvetica', 'normal');
+
+  // Linha 1: SPC / NF-e / NFC-e
+  drawCheckbox(
+    SERVICE_LABELS?.spc || 'SPC',
+    margin,
+    cursorY,
+    hasService('spc')
+  );
+  drawCheckbox(
+    SERVICE_LABELS?.nfe || 'NF-e',
+    margin + 40,
+    cursorY,
+    hasService('nfe')
+  );
+  drawCheckbox(
+    SERVICE_LABELS?.nfce || 'NFC-e',
+    margin + 80,
+    cursorY,
+    hasService('nfce')
+  );
+  cursorY += lineHeight;
+
+  // Linha 2: MDF-e / CT-e / CF-e
+  drawCheckbox(
+    SERVICE_LABELS?.cte || 'CT-e',
+    margin,
+    cursorY,
+    hasService('cte')
+  );
+  drawCheckbox(
+    'MDF-e',
+    margin + 40,
+    cursorY,
+    hasService('mdfe')
+  );
+  drawCheckbox(
+    SERVICE_LABELS?.cfe || 'CF-e',
+    margin + 80,
+    cursorY,
+    hasService('cfe')
+  );
+  cursorY += lineHeight + 4;
+
+  // OBS
+  doc.setFont('helvetica', 'bold');
+  doc.text('OBS:', margin, cursorY);
+  doc.setFont('helvetica', 'normal');
+  const obsText = get(company.note);
+  const obsLines = doc.splitTextToSize(obsText, pageWidth - margin * 2 - 12);
+  doc.text(obsLines, margin + 12, cursorY);
+  cursorY += Math.max(lineHeight, obsLines.length * 4 + 2);
+
+  cursorY += 4;
+
+  // ===== PLANO / VALOR / VENCIMENTO =====
+  doc.setFont('helvetica', 'bold');
+  doc.text('Tipo:', margin, cursorY);
+  doc.setFont('helvetica', 'normal');
+  doc.text(get(company.plan_type), margin + 15, cursorY);
+
+  doc.setFont('helvetica', 'bold');
+  doc.text('Vlr.:', margin + 80, cursorY);
+  doc.setFont('helvetica', 'normal');
+  doc.text(formatMoney(company.value), margin + 95, cursorY);
+
+  doc.setFont('helvetica', 'bold');
+  doc.text('Vencimento em:', margin + 130, cursorY);
+  doc.setFont('helvetica', 'normal');
+  doc.text(formatDate(company.due_date), margin + 170, cursorY);
+  cursorY += lineHeight + 4;
+
+  // ===== AUTORIZAÇÃO DE DIVULGAÇÃO =====
+  doc.setFont('helvetica', 'bold');
+  doc.text('Autorização de divulgação:', margin, cursorY);
+  cursorY += lineHeight;
+
+  doc.setFont('helvetica', 'normal');
+
+  drawCheckbox(
+    'Site da ACIU',
+    margin,
+    cursorY,
+    hasMarketing('site')
+  );
+  drawCheckbox(
+    'WhatsApp',
+    margin + 55,
+    cursorY,
+    hasMarketing('whatsapp')
+  );
+  drawCheckbox(
+    'E-mail marketing',
+    margin + 110,
+    cursorY,
+    hasMarketing('email')
+  );
+  cursorY += lineHeight + 6;
+
+  // ===== CLÁUSULA RESUMIDA =====
+  const clausula =
+    'DA ASSOCIAÇÃO COMERCIAL, INDUSTRIAL E AGRÍCOLA DE UMUARAMA – ACIU, CIENTE(S) de que, em caso de posterior desligamento da entidade, ' +
+    'as mensalidades e serviços em aberto permanecerão devidos até o mês do efetivo cancelamento, e que, em caso de inadimplência, ' +
+    'os débitos poderão ser encaminhados para cobrança e inclusão no banco de dados do SPC.';
+
+  const clausulaLines = doc.splitTextToSize(
+    clausula,
+    pageWidth - margin * 2
+  );
+
+  doc.setFont('helvetica', 'normal');
+  clausulaLines.forEach((line) => {
+    doc.text(line, margin, cursorY);
     cursorY += 4;
-    doc.setFont('helvetica', 'normal');
-    doc.addImage(signatureData, getImageFormat(signatureData), margin, cursorY, 70, 30);
-    cursorY += 36;
+  });
+
+  cursorY += 8;
+
+  // ===== ASSINATURA DO PROPONENTE =====
+  const signatureData = await resolveSignatureData(company);
+  const sigBlockHeight = signatureData ? 30 : 0;
+
+  if (signatureData) {
+    const imgWidth = 60;
+    const imgHeight = 25;
+    const imgX = centerX - imgWidth / 2;
+    doc.addImage(
+      signatureData,
+      getImageFormat(signatureData),
+      imgX,
+      cursorY,
+      imgWidth,
+      imgHeight
+    );
+    cursorY += sigBlockHeight + 2;
   }
 
-  doc.text(`Responsável: ${profile?.name || '—'}`, margin, cursorY + 4);
+  // Linha de firma proponente
+  doc.text('__________________________________', margin, cursorY);
+  cursorY += 4;
+  doc.text('Firma Proponente', margin + 10, cursorY);
+  cursorY += lineHeight + 4;
 
+  // ===== RODAPÉ – APROVAÇÃO DIRETORIA =====
+  doc.setFont('helvetica', 'bold');
+  doc.text('APROVADO PELA DIRETORIA', margin, cursorY);
+  cursorY += lineHeight;
+
+  doc.setFont('helvetica', 'normal');
+  doc.text('Em, ____/________/_____', margin, cursorY);
+  cursorY += lineHeight + 4;
+
+  doc.text('Presidente: _______________________', margin, cursorY);
+  doc.text(
+    'Secretário: _______________________',
+    margin + 90,
+    cursorY
+  );
+
+  // ===== NOME DO ARQUIVO =====
   const safeName = (value) =>
     String(value || '')
       .normalize('NFD')
@@ -750,13 +949,19 @@ async function generateCompanyPdf(company) {
       .replace(/\s+/g, '-')
       .toLowerCase();
 
-  const filename = ['empresa', company.id, safeName(company.fantasy_name)]
+  const filename = [
+    'proposta-associado',
+    currentYear,
+    company.id,
+    safeName(company.fantasy_name),
+  ]
     .filter(Boolean)
     .join('-')
     .concat('.pdf');
 
   doc.save(filename);
 }
+
 
 async function handleExportCompanyPdf(id, button) {
   try {
