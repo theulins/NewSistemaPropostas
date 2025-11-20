@@ -1,5 +1,5 @@
-# 🧩 Sistema de Propostas – ACIU  
-Aplicação completa para gestão de empresas, propostas, pendências, comissões e geração de PDFs oficiais da ACIU.  
+# 🧩 Sistema de Propostas 
+Aplicação completa para gestão de empresas, propostas, pendências, comissões e geração de PDFs.  
 Inclui **frontend estático**, **backend Node/Express**, **MySQL**, **PDF Generator**, **assinatura digital**, **dashboard**, **controle de permissões** e **auditoria**.
 
 <p align="left">
@@ -87,4 +87,29 @@ PDF → geração completa e campos alinhados
 Pendências → edição inline + aprovação/reprovação
 
 Configurações → tema/cor + CRUD de usuários (admin)
+
+## Endpoints principais
+
+- `POST /api/login` / `GET /api/profile`
+- Dashboard: `GET /api/dashboard/summary`, `GET /api/dashboard/commissions?month=YYYY-MM`
+- Empresas: `GET /api/empresas/list`, `GET /api/empresas/search`, `POST /api/empresas`
+- Pendências: `GET /api/empresas/pending`, `POST /api/empresas/pending/approve`, `POST /api/empresas/pending/reject`
+- Configurações: `GET/PUT /api/settings`
+- Usuários (admin): `GET /api/users`, `POST /api/users`, `PUT /api/users/:id`, `DELETE /api/users/:id`
+
+## Notas
+
+- JWT com expiração de 8h e RBAC (viewer/editor/admin)
+- Upload de assinaturas em PNG (pasta `server/uploads`)
+- Layout mobile-first com tema claro/escuro e seletor de cor primária
+- Seletores (select/option) com contraste adequado para ambos os temas
+
+## Testes manuais sugeridos
+
+- Login → redireciona para dashboard com token válido
+- Dashboard → KPIs, últimas edições e card de comissões por mês (com taxa padrão ou manual)
+- Empresas → pesquisa/lista, alternância lista/formulário e envio com assinatura desenhada
+- Pendências → edição inline de valor/taxa, aprovação/reprovação removendo linhas
+- Configurações → ajuste de tema/cor + CRUD de usuários (apenas admin)
+
 
