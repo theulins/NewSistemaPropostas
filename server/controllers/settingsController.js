@@ -1,17 +1,19 @@
 import pool from '../db/pool.js';
 
-const allowedKeys = new Set(['theme_preference', 'primary', 'default_commission_rate']);
+const allowedKeys = new Set(['theme_preference', 'primary', 'default_commission_rate', 'card_radius']);
 
 export const getSettings = async (_req, res) => {
   const [rows] = await pool.query('SELECT `key`, `value` FROM settings WHERE `key` IN (?,?,?)', [
     'theme_preference',
     'primary',
     'default_commission_rate',
+    'card_radius',
   ]);
 
   const result = {
     theme_preference: 'system',
     primary: '#4f86ff',
+    card_radius: '16',
   };
 
   rows.forEach((row) => {
@@ -22,6 +24,7 @@ export const getSettings = async (_req, res) => {
     theme_preference: result.theme_preference,
     primary: result.primary,
     default_commission_rate: result.default_commission_rate ? Number(result.default_commission_rate) : null,
+    card_radius: result.card_radius ? Number(result.card_radius) : null,
   });
 };
 
