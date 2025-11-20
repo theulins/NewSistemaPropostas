@@ -1,93 +1,193 @@
-# Sistema de Propostas
+# 🧩 Sistema de Propostas – ACIU  
+Aplicação completa para gestão de empresas, propostas, pendências, comissões e geração de PDFs oficiais da ACIU.  
+Inclui **frontend estático**, **backend Node/Express**, **MySQL**, **PDF Generator**, **assinatura digital**, **dashboard**, **controle de permissões** e **auditoria**.
 
-Aplicação completa (frontend estático + backend Node/Express + MySQL) para gestão de empresas, propostas e aprovações.
+<p align="left">
+  <img src="https://img.shields.io/badge/Node.js-18%2B-339933?style=for-the-badge&logo=node.js&logoColor=white"/>
+  <img src="https://img.shields.io/badge/MySQL-8%2B-4479A1?style=for-the-badge&logo=mysql&logoColor=white"/>
+  <img src="https://img.shields.io/badge/Express.js-Backend-black?style=for-the-badge&logo=express&logoColor=white"/>
+  <img src="https://img.shields.io/badge/HTML-CSS-JS-ff9800?style=for-the-badge&logo=html5&logoColor=white"/>
+  <img src="https://img.shields.io/badge/JWT-Auth-000000?style=for-the-badge&logo=jsonwebtokens"/>
+  <img src="https://img.shields.io/badge/jsPDF-PDF_Generator-1976d2?style=for-the-badge"/>
+</p>
 
-## Estrutura
+---
 
-```
+## 📌 Visão Geral
+
+Este sistema foi desenvolvido para auxiliar o processo de **associação comercial**, centralizando:
+
+- Cadastro completo de empresas;
+- Registro de sócios/diretores;
+- Assinatura digital desenhada via canvas;
+- Geração automática de PDFs no modelo da ACIU;
+- Controle de pendências, aprovações e recusas;
+- Dashboard administrativo com comissões e indicadores;
+- Usuários com permissões (Admin, Editor, Viewer).
+
+O objetivo é fornecer uma ferramenta moderna, rápida e confiável para uso diário no setor comercial.
+
+---
+
+## 🗂 Estrutura do Projeto
+
 /public
-  css/, js/, *.html
+css/, js/, *.html
 /server
-  app.js, routes.js, controllers/, db/, middleware/, utils/
+app.js, routes.js, controllers/, db/, middleware/, utils/
 .env.example
-```
 
-## Pré-requisitos
+yaml
+Copiar código
 
-- Node.js 18+
-- MySQL 8 (ou compatível)
+---
 
-## Configuração do banco
+## ⚙️ Pré-requisitos
 
-1. Crie um banco de dados vazio (ex.: `sistema_propostas`).
-2. Dentro da pasta `server`, rode as migrations:
+- Node.js **18+**
+- MySQL **8+** (ou compatível)
 
-   ```bash
-   npm run migrate
-   ```
+---
 
-   - O comando cria todas as tabelas necessárias.
-   - Um usuário admin é criado/atualizado automaticamente (`admin@empresa.com`). A senha padrão é `admin123`, mas pode ser sobrescrita definindo a variável `ADMIN_DEFAULT_PASSWORD` no `.env` antes de rodar a migration.
-   - Configurações iniciais e dados de exemplo para empresas são inseridos caso o banco esteja vazio.
+## 🧱 Configuração do Banco de Dados
 
-## Backend
+1. Crie um banco de dados vazio:
 
-```bash
-cd server
-cp ../.env.example .env
-# edite credenciais do banco, JWT_SECRET etc.
-# (Opcional) defina ADMIN_DEFAULT_PASSWORD antes de rodar migrations
+   ```sql
+   CREATE DATABASE sistema_propostas;
+Execute as migrations dentro da pasta server:
 
-# instalar dependências
-npm install
-
-# criar/atualizar estrutura do banco
+bash
+Copiar código
 npm run migrate
+Isso irá:
 
-# iniciar o servidor
-npm start
-```
+Criar todas as tabelas necessárias;
 
-O servidor sobe em `http://localhost:3001` por padrão e expõe os endpoints REST em `/api/*`.
+Criar/atualizar automaticamente o usuário admin:
 
-## Frontend
-
-A API já expõe os arquivos estáticos contidos em `public`. Após iniciar o servidor (`npm start`), acesse:
-
-- `http://localhost:3001/` → redireciona para `login.html`
-- `http://localhost:3001/dashboard.html`
-- `http://localhost:3001/pendencias.html`
-
-Caso deseje servir o frontend separadamente (por exemplo, em outro domínio), basta disponibilizar o conteúdo da pasta `public` e
-configurar o proxy/CORS apontando para o backend em `http://localhost:3001`.
-
-### Login seed
-
-```
+makefile
+Copiar código
 E-mail: admin@empresa.com
 Senha: admin123
-```
+Inserir configurações iniciais e dados de exemplo (seed), caso o banco esteja vazio.
 
-## Endpoints principais
+Para sobrescrever a senha padrão:
 
-- `POST /api/login` / `GET /api/profile`
-- Dashboard: `GET /api/dashboard/summary`, `GET /api/dashboard/commissions?month=YYYY-MM`
-- Empresas: `GET /api/empresas/list`, `GET /api/empresas/search`, `POST /api/empresas`
-- Pendências: `GET /api/empresas/pending`, `POST /api/empresas/pending/approve`, `POST /api/empresas/pending/reject`
-- Configurações: `GET/PUT /api/settings`
-- Usuários (admin): `GET /api/users`, `POST /api/users`, `PUT /api/users/:id`, `DELETE /api/users/:id`
+env
+Copiar código
+ADMIN_DEFAULT_PASSWORD=minhasenha
+🖥️ Backend
+bash
+Copiar código
+cd server
+cp ../.env.example .env
+# edite o arquivo .env com:
+# DB_HOST, DB_USER, DB_PASSWORD, DB_NAME, JWT_SECRET, ADMIN_DEFAULT_PASSWORD, etc.
 
-## Notas
+npm install        # instala dependências
+npm run migrate    # cria/atualiza tabelas
+npm start          # inicia o servidor
+Servidor disponível em:
 
-- JWT com expiração de 8h e RBAC (viewer/editor/admin)
-- Upload de assinaturas em PNG (pasta `server/uploads`)
-- Layout mobile-first com tema claro/escuro e seletor de cor primária
-- Seletores (select/option) com contraste adequado para ambos os temas
+arduino
+Copiar código
+http://localhost:3001
+Endpoints REST ficam expostos em:
 
-## Testes manuais sugeridos
+bash
+Copiar código
+/api/*
+💻 Frontend
+Após iniciar o backend (npm start), acesse:
 
-- Login → redireciona para dashboard com token válido
-- Dashboard → KPIs, últimas edições e card de comissões por mês (com taxa padrão ou manual)
-- Empresas → pesquisa/lista, alternância lista/formulário e envio com assinatura desenhada
-- Pendências → edição inline de valor/taxa, aprovação/reprovação removendo linhas
-- Configurações → ajuste de tema/cor + CRUD de usuários (apenas admin)
+http://localhost:3001/ → redireciona para login.html
+
+http://localhost:3001/dashboard.html
+
+http://localhost:3001/empresas.html
+
+http://localhost:3001/pendencias.html
+
+Se quiser hospedar o frontend separadamente:
+
+publique a pasta public
+
+configure o proxy/CORS apontando para http://localhost:3001
+
+🔑 Login Inicial (Seed)
+makefile
+Copiar código
+E-mail: admin@empresa.com
+Senha: admin123
+🔌 Endpoints Principais
+🔐 Autenticação
+POST /api/login
+
+GET /api/profile
+
+📊 Dashboard
+GET /api/dashboard/summary
+
+GET /api/dashboard/commissions?month=YYYY-MM
+
+🏢 Empresas
+GET /api/empresas/list
+
+GET /api/empresas/search
+
+GET /api/empresas/:id
+
+POST /api/empresas
+
+PUT /api/empresas/:id
+
+📌 Pendências
+GET /api/empresas/pending
+
+POST /api/empresas/pending/approve
+
+POST /api/empresas/pending/reject
+
+⚙️ Configurações
+GET /api/settings
+
+PUT /api/settings
+
+👤 Usuários (Apenas Admin)
+GET /api/users
+
+POST /api/users
+
+PUT /api/users/:id
+
+DELETE /api/users/:id
+
+📝 Notas Técnicas
+Autenticação JWT com expiração de 8h
+
+RBAC (viewer/editor/admin)
+
+Upload de assinaturas em PNG (server/uploads)
+
+Geração de PDF com jsPDF (layout oficial ACIU)
+
+Layout mobile-first
+
+Tema claro/escuro e seletor de cor primária
+
+Seletores (select/option) com contraste ideal para ambos temas
+
+🧪 Testes Manuais Recomendados
+Login → dashboard com token válido
+
+Dashboard → KPIs + comissões por mês
+
+Empresas → pesquisa/lista + formulário + assinatura desenhada
+
+PDF → geração completa e campos alinhados
+
+Pendências → edição inline + aprovação/reprovação
+
+Configurações → tema/cor + CRUD de usuários (admin)
+
