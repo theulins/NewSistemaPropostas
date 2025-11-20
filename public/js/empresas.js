@@ -291,7 +291,7 @@ function preparePayload(formData) {
     payload[key] = typeof value === 'string' ? value.trim() : value;
   });
   payload.commission_exempt = formData.get('commission_exempt') ? 1 : 0;
-  if (!payload.employees_qty) {
+  if (payload.employees_qty === '' || payload.employees_qty === undefined || payload.employees_qty === null) {
     payload.employees_qty = null;
   } else {
     payload.employees_qty = Number(payload.employees_qty);

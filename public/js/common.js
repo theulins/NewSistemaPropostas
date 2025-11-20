@@ -75,7 +75,7 @@ export function getStoredUser() {
   }
 }
 
-export function applyTheme(preference = 'system', primary) {
+export function applyTheme(preference = 'system', primary, cardRadius) {
   const html = document.documentElement;
   if (preference === 'light') {
     html.classList.add('light');
@@ -87,6 +87,9 @@ export function applyTheme(preference = 'system', primary) {
   }
   if (primary) {
     html.style.setProperty('--primary', primary);
+  }
+  if (cardRadius !== undefined && cardRadius !== null && cardRadius !== '') {
+    html.style.setProperty('--card-radius', `${cardRadius}px`);
   }
 }
 
@@ -400,8 +403,8 @@ export async function initializePage(activePage) {
   let settings = null;
   try {
     settings = await authFetch('/settings', { method: 'GET' });
-    if (settings?.primary) {
-      applyTheme(profile.theme_preference ?? settings.theme_preference, settings.primary);
+    if (settings?.primary || settings?.card_radius) {
+      applyTheme(profile.theme_preference ?? settings.theme_preference, settings.primary, settings.card_radius);
     } else {
       applyTheme(profile.theme_preference ?? settings.theme_preference);
     }

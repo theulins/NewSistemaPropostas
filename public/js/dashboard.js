@@ -5,6 +5,8 @@ const recentList = document.getElementById('recent-list');
 const monthInput = document.getElementById('month-input');
 const monthApply = document.getElementById('month-apply');
 const commissionCard = document.getElementById('commission-card');
+const byUserWrapper = document.getElementById('commission-by-user');
+const byUserTable = document.querySelector('#commission-by-user tbody');
 let latestCommissionData = null;
 const MANUAL_RATE_KEY = 'dashboard_manual_rate';
 let manualRate = Number(localStorage.getItem(MANUAL_RATE_KEY) || '0.10');
@@ -104,6 +106,28 @@ function renderCommission(data, month) {
       <span>${commissionLabel}: <strong>${formatCurrency(commissionValue)}</strong></span>
     </div>
   `;
+
+  if (byUserWrapper && byUserTable) {
+    if (Array.isArray(data.byUsers) && data.byUsers.length) {
+      byUserWrapper.hidden = false;
+      byUserTable.innerHTML = data.byUsers
+        .map(
+          (item) => `
+            <tr>
+              <td>${item.name}</td>
+              <td>${formatNumber(item.totalCompanies)}</td>
+              <td>${formatCurrency(item.totalValue)}</td>
+              <td>${item.avgRate != null ? `${(item.avgRate * 100).toFixed(2)}%` : '—'}</td>
+              <td>${formatCurrency(item.totalCommission)}</td>
+            </tr>
+          `
+        )
+        .join('');
+    } else {
+      byUserWrapper.hidden = true;
+      byUserTable.innerHTML = '';
+    }
+  }
 
   if (!hasDefaultRate && !hasApprovedData) {
     const manualInput = document.getElementById('manual-rate-input');
