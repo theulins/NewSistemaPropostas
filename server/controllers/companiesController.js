@@ -42,6 +42,7 @@ function presentCompany(row) {
     ...row,
     services_contracted: parseStoredArray(row.services_contracted),
     marketing_authorizations: parseStoredArray(row.marketing_authorizations),
+    partners: parsePartnerList(row.partners),
   };
 }
 
@@ -66,6 +67,39 @@ function serializeOptions(value, allowedSet) {
 function pickOptionsJson(value, existingJson, allowedSet) {
   if (value === undefined) return existingJson;
   return serializeOptions(value, allowedSet);
+}
+
+function parsePartnerList(value) {
+  if (!value) return [];
+  const source = Array.isArray(value)
+    ? value
+    : (() => {
+        try {
+          const parsed = JSON.parse(value);
+          return Array.isArray(parsed) ? parsed : [];
+        } catch (_error) {
+          return [];
+        }
+      })();
+  const partners = [];
+  source.forEach((item) => {
+    if (!item) return;
+    const name = (item.name || item.nome || '').trim();
+    const cpf = digitsOnly(item.cpf || item.document || '');
+    if (!name && !cpf) return;
+    partners.push({ name, cpf });
+  });
+  return partners;
+}
+
+function serializePartners(value) {
+  const partners = parsePartnerList(value);
+  return partners.length ? JSON.stringify(partners) : null;
+}
+
+function pickPartnersJson(value, existingJson) {
+  if (value === undefined) return existingJson;
+  return serializePartners(value);
 }
 
 function removeSignatureFile(signatureUrl) {
@@ -211,6 +245,7 @@ export const createCompany = async (req, res) => {
     accounting_office,
     referred_by,
     note,
+    partners,
     services_contracted,
     marketing_authorizations,
     plan_type,
@@ -241,11 +276,12 @@ export const createCompany = async (req, res) => {
 
   const servicesJson = serializeOptions(services_contracted, SERVICE_OPTIONS);
   const marketingJson = serializeOptions(marketing_authorizations, MARKETING_OPTIONS);
+  const partnersJson = serializePartners(partners);
 
   const [result] = await pool.query(
     `INSERT INTO companies (
       fantasy_name, corporate_name, cnpj, ie, address, zip, city, state, phone, cel, whatsapp, email, instagram,
-      business_activity, foundation_date, employees_qty, sector, accounting_office, referred_by, note,
+      business_activity, foundation_date, employees_qty, sector, accounting_office, referred_by, note, partners,
       services_contracted, marketing_authorizations,
       plan_type, value, commission_rate, commission_exempt, due_date, signature_url, status, updated_by
     ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, 'pendente', ?)`
@@ -271,6 +307,7 @@ export const createCompany = async (req, res) => {
       nullIfEmpty(accounting_office),
       nullIfEmpty(referred_by),
       nullIfEmpty(note),
+      partnersJson,
       servicesJson,
       marketingJson,
       nullIfEmpty(plan_type),
@@ -331,6 +368,7 @@ export const updateCompany = async (req, res) => {
     accounting_office,
     referred_by,
     note,
+    partners,
     services_contracted,
     marketing_authorizations,
     plan_type,
@@ -376,6 +414,7 @@ export const updateCompany = async (req, res) => {
       foundation_date = ?,
       employees_qty = ?,
       sector = ?,
+      partners = ?,
       services_contracted = ?,
       marketing_authorizations = ?,
       accounting_office = ?,
@@ -407,6 +446,7 @@ export const updateCompany = async (req, res) => {
       pickNullableString(foundation_date, existing.foundation_date),
       pickNullableNumber(employees_qty, existing.employees_qty),
       pickNullableString(sector, existing.sector),
+      pickPartnersJson(partners, existing.partners),
       pickOptionsJson(services_contracted, existing.services_contracted, SERVICE_OPTIONS),
       pickOptionsJson(marketing_authorizations, existing.marketing_authorizations, MARKETING_OPTIONS),
       pickNullableString(accounting_office, existing.accounting_office),
