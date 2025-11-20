@@ -12,6 +12,8 @@ const formSection = document.getElementById('form-section');
 const listSection = document.getElementById('list-section');
 const toggleButtons = document.querySelectorAll('.toggle-group button');
 const companyForm = document.getElementById('company-form');
+const partnersList = document.getElementById('partners-list');
+const addPartnerBtn = document.getElementById('add-partner');
 const signaturePad = document.getElementById('signature-pad');
 const signatureDataInput = document.getElementById('signature-data');
 const clearSignature = document.getElementById('clear-signature');
@@ -46,6 +48,12 @@ let editingCompanyId = null;
 
 function digitsOnly(value = '') {
   return value.replace(/\D+/g, '');
+}
+
+function formatCpf(value = '') {
+  const digits = digitsOnly(value);
+  if (digits.length !== 11) return digits;
+  return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`;
 }
 
 function formatDateTime(value) {
@@ -302,6 +310,74 @@ function preparePayload(formData) {
     delete payload.signature_data_url;
   }
   return payload;
+}
+
+function createPartnerRow(partner = {}) {
+  const row = document.createElement('div');
+  row.className = 'partner-row';
+  row.innerHTML = `
+    <label>
+      <span>Nome</span>
+      <input name="partner_name" placeholder="Nome completo" value="${partner.name || ''}">
+    </label>
+    <label>
+      <span>CPF</span>
+      <input name="partner_cpf" placeholder="000.000.000-00" inputmode="numeric" maxlength="14" value="${formatCpf(
+        partner.cpf
+      )}">
+    </label>
+    <button type="button" class="ghost danger remove-partner" aria-label="Remover sócio ou diretor">Remover</button>
+  `;
+
+  const removeBtn = row.querySelector('.remove-partner');
+  removeBtn?.addEventListener('click', () => {
+    row.remove();
+    updateRemoveButtonsState();
+  });
+
+  return row;
+}
+
+function updateRemoveButtonsState() {
+  if (!partnersList) return;
+  const rows = partnersList.querySelectorAll('.partner-row');
+  const singleRow = rows.length === 1;
+  rows.forEach((row) => {
+    const removeBtn = row.querySelector('.remove-partner');
+    if (removeBtn) {
+      removeBtn.disabled = singleRow;
+    }
+  });
+}
+
+function renderPartners(partners = []) {
+  if (!partnersList) return;
+  partnersList.innerHTML = '';
+  const items = partners.length ? partners : [{}];
+  items.forEach((partner) => {
+    partnersList.appendChild(createPartnerRow(partner));
+  });
+  updateRemoveButtonsState();
+}
+
+function collectPartnersFromForm() {
+  if (!partnersList) return [];
+  const partners = [];
+  const rows = partnersList.querySelectorAll('.partner-row');
+  for (const row of rows) {
+    const nameInput = row.querySelector('input[name="partner_name"]');
+    const cpfInput = row.querySelector('input[name="partner_cpf"]');
+    const name = nameInput?.value.trim() || '';
+    const cpfDigits = digitsOnly(cpfInput?.value || '');
+    const hasContent = name || cpfDigits;
+    if (!hasContent) continue;
+    if (!name || !cpfDigits) {
+      showError('Informe nome e CPF completos para cada sócio ou diretor.');
+      return null;
+    }
+    partners.push({ name, cpf: cpfDigits });
+  }
+  return partners;
 }
 
 function buildFilterSummary() {
@@ -565,6 +641,7 @@ async function populateForm(company) {
   }
   setCheckboxGroup('services_contracted', company.services_contracted || []);
   setCheckboxGroup('marketing_authorizations', company.marketing_authorizations || []);
+  renderPartners(company.partners || []);
   await displaySignaturePreview(company.signature_url);
 }
 
@@ -574,6 +651,7 @@ function resetFormState() {
   companyForm.reset();
   clearSignaturePad();
   resetSignatureData();
+  renderPartners();
 }
 
 async function startEditingCompany(id) {
@@ -1142,6 +1220,7 @@ async function init() {
   await loadCompanies();
   bindSignaturePad();
   bindTableActions();
+  renderPartners();
   showView('lista');
 
   const canCreate = canManageCompanies;
@@ -1183,6 +1262,11 @@ async function init() {
   exportCsvBtn?.addEventListener('click', exportTableToCsv);
   if (canCreate) {
     cnpjLookupBtn?.addEventListener('click', lookupCnpj);
+    addPartnerBtn?.addEventListener('click', () => {
+      const currentPartners = collectPartnersFromForm();
+      if (currentPartners === null) return;
+      renderPartners([...currentPartners, {}]);
+    });
   }
 
   companyForm.addEventListener('submit', async (event) => {
@@ -1195,8 +1279,11 @@ async function init() {
     if (signatureHasContent) {
       updateSignatureData();
     }
+    const partners = collectPartnersFromForm();
+    if (partners === null) return;
     const formData = new FormData(companyForm);
     const payload = preparePayload(formData);
+    payload.partners = partners;
     try {
       let response;
       const isEditing = Boolean(editingCompanyId);
@@ -1221,6 +1308,7 @@ async function init() {
         companyForm.reset();
         clearSignaturePad();
         resetSignatureData();
+        renderPartners();
         if (companyData) {
           await generateCompanyPdf(companyData);
         }
