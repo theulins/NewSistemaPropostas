@@ -51,139 +51,36 @@ Copiar código
 
 ## 🧱 Configuração do Banco de Dados
 
-1. Crie um banco de dados vazio:
+1. Crie um banco de dados vazio (ex.: `sistema_propostas`).
+2. Dentro da pasta `server`, rode as migrations:
 
-   ```sql
-   CREATE DATABASE sistema_propostas;
-Execute as migrations dentro da pasta server:
+   ```bash
+   npm run migrate
+   ```
 
-bash
-Copiar código
-npm run migrate
-Isso irá:
+   - O comando cria todas as tabelas necessárias.
+   - Um usuário admin é criado/atualizado automaticamente (`admin@empresa.com`). A senha padrão é `admin123`, mas pode ser sobrescrita definindo a variável `ADMIN_DEFAULT_PASSWORD` no `.env` antes de rodar a migration.
+   - Configurações iniciais e dados de exemplo para empresas são inseridos caso o banco esteja vazio.
 
-Criar todas as tabelas necessárias;
+## Backend
 
-Criar/atualizar automaticamente o usuário admin:
-
-makefile
-Copiar código
-E-mail: admin@empresa.com
-Senha: admin123
-Inserir configurações iniciais e dados de exemplo (seed), caso o banco esteja vazio.
-
-Para sobrescrever a senha padrão:
-
-env
-Copiar código
-ADMIN_DEFAULT_PASSWORD=minhasenha
-🖥️ Backend
-bash
-Copiar código
+```bash
 cd server
 cp ../.env.example .env
-# edite o arquivo .env com:
-# DB_HOST, DB_USER, DB_PASSWORD, DB_NAME, JWT_SECRET, ADMIN_DEFAULT_PASSWORD, etc.
+# edite credenciais do banco, JWT_SECRET etc.
+# (Opcional) defina ADMIN_DEFAULT_PASSWORD antes de rodar migrations
 
-npm install        # instala dependências
-npm run migrate    # cria/atualiza tabelas
-npm start          # inicia o servidor
-Servidor disponível em:
+# instalar dependências
+npm install
 
-arduino
-Copiar código
-http://localhost:3001
-Endpoints REST ficam expostos em:
+# criar/atualizar estrutura do banco
+npm run migrate
 
-bash
-Copiar código
-/api/*
-💻 Frontend
-Após iniciar o backend (npm start), acesse:
+# iniciar o servidor
+npm start
+```
 
-http://localhost:3001/ → redireciona para login.html
-
-http://localhost:3001/dashboard.html
-
-http://localhost:3001/empresas.html
-
-http://localhost:3001/pendencias.html
-
-Se quiser hospedar o frontend separadamente:
-
-publique a pasta public
-
-configure o proxy/CORS apontando para http://localhost:3001
-
-🔑 Login Inicial (Seed)
-makefile
-Copiar código
-E-mail: admin@empresa.com
-Senha: admin123
-🔌 Endpoints Principais
-🔐 Autenticação
-POST /api/login
-
-GET /api/profile
-
-📊 Dashboard
-GET /api/dashboard/summary
-
-GET /api/dashboard/commissions?month=YYYY-MM
-
-🏢 Empresas
-GET /api/empresas/list
-
-GET /api/empresas/search
-
-GET /api/empresas/:id
-
-POST /api/empresas
-
-PUT /api/empresas/:id
-
-📌 Pendências
-GET /api/empresas/pending
-
-POST /api/empresas/pending/approve
-
-POST /api/empresas/pending/reject
-
-⚙️ Configurações
-GET /api/settings
-
-PUT /api/settings
-
-👤 Usuários (Apenas Admin)
-GET /api/users
-
-POST /api/users
-
-PUT /api/users/:id
-
-DELETE /api/users/:id
-
-📝 Notas Técnicas
-Autenticação JWT com expiração de 8h
-
-RBAC (viewer/editor/admin)
-
-Upload de assinaturas em PNG (server/uploads)
-
-Geração de PDF com jsPDF (layout oficial ACIU)
-
-Layout mobile-first
-
-Tema claro/escuro e seletor de cor primária
-
-Seletores (select/option) com contraste ideal para ambos temas
-
-🧪 Testes Manuais Recomendados
-Login → dashboard com token válido
-
-Dashboard → KPIs + comissões por mês
-
-Empresas → pesquisa/lista + formulário + assinatura desenhada
+O servidor sobe em `http://localhost:3001` por padrão e expõe os endpoints REST em `/api/*`.
 
 PDF → geração completa e campos alinhados
 
