@@ -284,8 +284,7 @@ export const createCompany = async (req, res) => {
       business_activity, foundation_date, employees_qty, sector, accounting_office, referred_by, note, partners,
       services_contracted, marketing_authorizations,
       plan_type, value, commission_rate, commission_exempt, due_date, signature_url, status, updated_by
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, 'pendente', ?)`
-    ,
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       nullIfEmpty(fantasy_name),
       nullIfEmpty(corporate_name),
@@ -316,6 +315,7 @@ export const createCompany = async (req, res) => {
       commission_exempt ? 1 : 0,
       nullIfEmpty(due_date),
       signature_url,
+      'pendente',
       req.user?.id || null,
     ]
   );

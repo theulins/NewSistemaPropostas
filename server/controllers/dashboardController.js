@@ -54,44 +54,65 @@ export const getCommissions = async (req, res) => {
   const year = monthDate.getUTCFullYear();
   const monthIndex = monthDate.getUTCMonth() + 1;
 
-  const [commissionStatsRows] = await pool.query(
-    `SELECT
-        IFNULL(SUM(value),0) AS totalValue,
-        IFNULL(SUM(CASE WHEN commission_rate IS NOT NULL THEN value * commission_rate ELSE 0 END),0) AS totalCommission,
-        AVG(commission_rate) AS avgRate,
-        COUNT(*) AS totalApproved
-      FROM companies
-      WHERE status = 'ativo'
-        AND approved_at IS NOT NULL
-        AND commission_exempt = 0
-        AND YEAR(approved_at) = ?
-        AND MONTH(approved_at) = ?`,
-    [year, monthIndex]
-  );
+  const currentUserId = req.user?.id || null;
+  const currentUserRole = req.user?.role || 'viewer';
+  const isAdmin = currentUserRole === 'admin';
+
+  let sql = `
+    SELECT
+      IFNULL(SUM(value),0) AS totalValue,
+      IFNULL(SUM(CASE WHEN commission_rate IS NOT NULL THEN value * commission_rate ELSE 0 END),0) AS totalCommission,
+      AVG(commission_rate) AS avgRate,
+      COUNT(*) AS totalApproved
+    FROM companies
+    WHERE status = 'ativo'
+      AND approved_at IS NOT NULL
+      AND commission_exempt = 0
+      AND YEAR(approved_at) = ?
+      AND MONTH(approved_at) = ?
+  `;
+  const params = [year, monthIndex];
+
+  if (!isAdmin && currentUserId) {
+    sql += ' AND updated_by = ?';
+    params.push(currentUserId);
+  }
+
+  const [commissionStatsRows] = await pool.query(sql, params);
+
+  const [commissionStats] = commissionStatsRows || [];
+  const totalValue = Number(commissionStats?.totalValue || 0);
+  const approvedCommission = commissionStats?.totalCommission !== null
+    ? Number(commissionStats.totalCommission)
+    : null;
+  const approvedRate = commissionStats?.avgRate !== null
+    ? Number(commissionStats.avgRate)
+    : null;
+  const approvedCompanies = Number(commissionStats?.totalApproved || 0);
 
   const [[settingsRow]] = await pool.query(
     "SELECT CAST(value AS DECIMAL(6,4)) AS defaultRate FROM settings WHERE `key` = 'default_commission_rate'"
   );
 
-  const stats = commissionStatsRows[0] || {};
-  const totalValue = Number(stats.totalValue || 0);
-  const approvedCommission = Number(stats.totalCommission || 0);
-  const approvedCompanies = Number(stats.totalApproved || 0);
-  const defaultRate = settingsRow ? settingsRow.defaultRate : null;
-  const fallbackRate = defaultRate ?? Number(stats.avgRate || 0);
-  const approvedRate = totalValue > 0 && approvedCommission > 0
-    ? Number((approvedCommission / totalValue).toFixed(4))
+  const defaultRate = settingsRow?.defaultRate !== null && settingsRow?.defaultRate !== undefined
+    ? Number(settingsRow.defaultRate)
     : null;
-  const estimatedCommission = fallbackRate
-    ? Number((totalValue * fallbackRate).toFixed(2))
-    : 0;
+
+  const hasApprovedData = approvedCompanies > 0 && approvedCommission !== null && approvedRate !== null;
+  const fallbackRate = hasApprovedData ? approvedRate : defaultRate;
+
+  const commissionValue = hasApprovedData
+    ? approvedCommission
+    : fallbackRate
+      ? Number((totalValue * fallbackRate).toFixed(2))
+      : 0;
 
   return res.json({
     totalValue,
     defaultRate: defaultRate !== null ? Number(defaultRate) : undefined,
-    commission: estimatedCommission,
+    commission: commissionValue,
     approvedCommission,
     approvedCompanies,
     approvedRate,
   });
-};
+};;
