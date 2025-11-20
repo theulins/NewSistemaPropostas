@@ -656,19 +656,40 @@ async function generateCompanyPdf(company) {
     return;
   }
 
+  // Helper para carregar o logo da pasta /media
+  const loadLogo = () =>
+    new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => resolve(null);
+      img.src = '/media/logo.png'; // C:\xampp\htdocs\NewSistemaProposta\public\media\logo.png
+    });
+
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });
   const margin = 15;
   const pageWidth = doc.internal.pageSize.getWidth();
   const centerX = pageWidth / 2;
-  let cursorY = 20;
+  let cursorY = 15;
   const lineHeight = 6;
   const currentYear = new Date().getFullYear();
 
   const get = (value) => (value ? String(value) : '');
 
+  const getOr = (...keys) => {
+    for (const key of keys) {
+      const value = company && company[key];
+      if (value !== undefined && value !== null && value !== '') {
+        return String(value);
+      }
+    }
+    return '';
+  };
+
   const formatMoney = (value) => {
     if (value == null || isNaN(value)) return '';
-    return formatCurrency ? formatCurrency(value) : Number(value).toFixed(2);
+    return typeof formatCurrency === 'function'
+      ? formatCurrency(value)
+      : Number(value).toFixed(2);
   };
 
   const formatDate = (value) => {
@@ -696,202 +717,275 @@ async function generateCompanyPdf(company) {
     doc.text(label, x + boxSize + 2, y);
   };
 
-  // ===== CABEÇALHO =====
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(12);
-  doc.text(
-    'ASSOCIAÇÃO COMERCIAL, INDUSTRIAL E AGRÍCOLA DE UMUARAMA – ACIU',
-    centerX,
-    cursorY,
-    { align: 'center' }
-  );
-  cursorY += 8;
+  // ===== CABEÇALHO COM LOGO =====
+  doc.setFont('times', 'normal');
+  doc.setFontSize(11);
 
+  const logoImg = await loadLogo();
+  if (logoImg) {
+    const logoWidth = 35;
+    const logoHeight = 18;
+    const logoX = margin;
+    const logoY = cursorY;
+    doc.addImage(logoImg, 'PNG', logoX, logoY, logoWidth, logoHeight);
+  }
+
+  // Título principal – PROPOSTA ASSOCIADOS ANO
+  doc.setFont('times', 'bold');
   doc.setFontSize(14);
-  doc.text('PROPOSTA DE ADMISSÃO DE SÓCIO', centerX, cursorY, {
+  doc.text(`PROPOSTA ASSOCIADOS ${currentYear}`, centerX, cursorY + 5, {
     align: 'center',
   });
-  cursorY += 7;
 
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(10);
-  doc.text(`Ano: ${currentYear}`, centerX, cursorY, { align: 'center' });
-  cursorY += 10;
+  // Subtítulo – PROPOSTA DE ADMISSÃO DE SÓCIO
+  doc.setFontSize(13);
+  doc.text('PROPOSTA DE ADMISSÃO DE SÓCIO', centerX, cursorY + 13, {
+    align: 'center',
+  });
+
+  cursorY += 25;
 
   // ===== DADOS DA EMPRESA =====
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('times', 'bold');
   doc.setFontSize(11);
-  doc.text('Dados da empresa', margin, cursorY);
+  doc.text('Razão Social:', margin, cursorY);
+  doc.setFont('times', 'normal');
+  doc.text(get(company.corporate_name), margin + 32, cursorY);
   cursorY += lineHeight;
 
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(10);
+  doc.setFont('times', 'bold');
+  doc.text('Denominação Comercial:', margin, cursorY);
+  doc.setFont('times', 'normal');
+  doc.text(get(company.fantasy_name), margin + 47, cursorY);
+  cursorY += lineHeight;
 
-  // Razão Social
-  doc.text(
-    `Razão Social: ${get(company.corporate_name)}`,
-    margin,
-    cursorY
+  doc.setFont('times', 'bold');
+  doc.text('Endereço:', margin, cursorY);
+  doc.setFont('times', 'normal');
+  doc.text(get(company.address), margin + 22, cursorY);
+
+  doc.setFont('times', 'bold');
+  const cepLabel = 'CEP:';
+  const cepX = pageWidth - margin - 40;
+  doc.text(cepLabel, cepX, cursorY);
+  doc.setFont('times', 'normal');
+  doc.text(get(company.zip), cepX + 10, cursorY);
+  cursorY += lineHeight;
+
+  doc.setFont('times', 'bold');
+  doc.text('E-MAIL:', margin, cursorY);
+  doc.setFont('times', 'normal');
+  doc.text(get(company.email), margin + 20, cursorY);
+  cursorY += lineHeight;
+
+  doc.setFont('times', 'bold');
+  doc.text('Instagram:', margin, cursorY);
+  doc.setFont('times', 'normal');
+  doc.text(get(company.instagram), margin + 25, cursorY);
+
+  doc.setFont('times', 'bold');
+  doc.text('Telefone:', margin + 90, cursorY);
+  doc.setFont('times', 'normal');
+  doc.text(get(company.phone), margin + 113, cursorY);
+  cursorY += lineHeight;
+
+  doc.setFont('times', 'bold');
+  doc.text('Cidade:', margin, cursorY);
+  doc.setFont('times', 'normal');
+  doc.text(get(company.city), margin + 19, cursorY);
+
+  doc.setFont('times', 'bold');
+  doc.text('Estado:', margin + 70, cursorY);
+  doc.setFont('times', 'normal');
+  doc.text(get(company.state), margin + 92, cursorY);
+
+  doc.setFont('times', 'bold');
+  doc.text('CEL:', margin + 115, cursorY);
+  doc.setFont('times', 'normal');
+  doc.text(get(company.cel), margin + 129, cursorY);
+
+  doc.setFont('times', 'bold');
+  doc.text('WhatsApp:', margin + 155, cursorY);
+  doc.setFont('times', 'normal');
+  doc.text(get(company.whatsapp), margin + 185, cursorY);
+  cursorY += lineHeight;
+
+  doc.setFont('times', 'bold');
+  doc.text('CNPJ:', margin, cursorY);
+  doc.setFont('times', 'normal');
+  doc.text(get(company.cnpj), margin + 17, cursorY);
+  cursorY += lineHeight;
+
+  doc.setFont('times', 'bold');
+  doc.text('Inscrição Estadual:', margin, cursorY);
+  doc.setFont('times', 'normal');
+  doc.text(getOr('state_registration', 'ie', 'ie_number'), margin + 40, cursorY);
+  cursorY += lineHeight;
+
+  doc.setFont('times', 'bold');
+  doc.text('Ramo de Atividade:', margin, cursorY);
+  doc.setFont('times', 'normal');
+  doc.text(getOr('activity_branch', 'business_activity'), margin + 40, cursorY);
+  cursorY += lineHeight;
+
+  doc.setFont('times', 'bold');
+  doc.text('Data Fundação:', margin, cursorY);
+  doc.setFont('times', 'normal');
+  doc.text(formatDate(getOr('foundation_date', 'opening_date')), margin + 34, cursorY);
+
+  doc.setFont('times', 'bold');
+  doc.text('Quantidade de Funcionários:', margin + 80, cursorY);
+  doc.setFont('times', 'normal');
+  doc.text(getOr('employees_count', 'employees'), margin + 135, cursorY);
+  cursorY += lineHeight;
+
+  doc.setFont('times', 'bold');
+  doc.text('Setor:', margin, cursorY);
+  doc.setFont('times', 'normal');
+  doc.text(get(company.sector), margin + 18, cursorY);
+  cursorY += lineHeight;
+
+  doc.setFont('times', 'bold');
+  doc.text('Esc.de Contabilidade:', margin, cursorY);
+  doc.setFont('times', 'normal');
+  doc.text(getOr('accounting_office', 'accounting'), margin + 45, cursorY);
+  cursorY += lineHeight;
+
+  doc.setFont('times', 'bold');
+  doc.text('Indicação de:', margin, cursorY);
+  doc.setFont('times', 'normal');
+  doc.text(getOr('indication', 'referred_by'), margin + 28, cursorY);
+  cursorY += lineHeight;
+
+  doc.setFont('times', 'bold');
+  doc.text('Observação:', margin, cursorY);
+  doc.setFont('times', 'normal');
+  const obsEmpresa = getOr('observation', 'note');
+  const obsEmpresaLines = doc.splitTextToSize(
+    obsEmpresa,
+    pageWidth - margin * 2 - 25
   );
+  doc.text(obsEmpresaLines, margin + 27, cursorY);
+  cursorY += Math.max(lineHeight, obsEmpresaLines.length * 4 + 2);
+
+  cursorY += 2;
+
+  // ===== SÓCIOS OU DIRETORES =====
+  doc.setFont('times', 'bold');
+  doc.setFontSize(11);
+  doc.text('SÓCIOS OU DIRETORES', centerX, cursorY, { align: 'center' });
   cursorY += lineHeight;
 
-  // Denominação Comercial
-  doc.text(
-    `Denominação Comercial: ${get(company.fantasy_name)}`,
-    margin,
-    cursorY
-  );
-  cursorY += lineHeight;
+  const partners = Array.isArray(company.partners) ? company.partners : [];
 
-  // Endereço + CEP
-  doc.text(`Endereço: ${get(company.address)}`, margin, cursorY);
-  doc.text(
-    `CEP: ${get(company.zip)}`,
-    pageWidth - margin - 40,
-    cursorY
-  );
-  cursorY += lineHeight;
+  doc.setFont('times', 'bold');
+  for (let i = 0; i < 4; i++) {
+    const partner = partners[i] || {};
+    doc.text('Nome:', margin, cursorY);
+    doc.setFont('times', 'normal');
+    doc.text(get(partner.name), margin + 18, cursorY);
 
-  // E-mail
-  doc.text(`E-mail: ${get(company.email)}`, margin, cursorY);
-  cursorY += lineHeight;
+    doc.setFont('times', 'bold');
+    doc.text('CPF:', margin + 120, cursorY);
+    doc.setFont('times', 'normal');
+    doc.text(get(partner.cpf), margin + 135, cursorY);
 
-  // Instagram + Telefone
-  doc.text(`Instagram: ${get(company.instagram)}`, margin, cursorY);
-  doc.text(
-    `Telefone: ${get(company.phone)}`,
-    pageWidth - margin - 50,
-    cursorY
-  );
-  cursorY += lineHeight;
+    cursorY += lineHeight;
+    doc.setFont('times', 'bold');
+  }
 
-  // Cidade / Estado / CEL / WhatsApp
-  doc.text(`Cidade: ${get(company.city)}`, margin, cursorY);
-  doc.text(`Estado: ${get(company.state)}`, margin + 70, cursorY);
-  doc.text(`CEL: ${get(company.cel)}`, margin + 110, cursorY);
-  doc.text(
-    `WhatsApp: ${get(company.whatsapp)}`,
-    margin + 150,
-    cursorY
-  );
-  cursorY += lineHeight + 4;
+  cursorY += 2;
 
   // ===== SERVIÇOS CONTRATADOS =====
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('times', 'bold');
+  doc.setFontSize(11);
   doc.text('Serviços Contratados:', margin, cursorY);
   cursorY += lineHeight;
 
-  doc.setFont('helvetica', 'normal');
+  doc.setFont('times', 'normal');
 
-  // Linha 1: SPC / NF-e / NFC-e
-  drawCheckbox(
-    SERVICE_LABELS?.spc || 'SPC',
-    margin,
-    cursorY,
-    hasService('spc')
-  );
-  drawCheckbox(
-    SERVICE_LABELS?.nfe || 'NF-e',
-    margin + 40,
-    cursorY,
-    hasService('nfe')
-  );
-  drawCheckbox(
-    SERVICE_LABELS?.nfce || 'NFC-e',
-    margin + 80,
-    cursorY,
-    hasService('nfce')
-  );
-  cursorY += lineHeight;
+  // linha única SPC / NF-e / NFC-e / MDF-e / CT-e / CF-e
+  let x = margin;
+  const labels = [
+    { key: 'spc', label: SERVICE_LABELS?.spc || 'SPC' },
+    { key: 'nfe', label: SERVICE_LABELS?.nfe || 'NF-e' },
+    { key: 'nfce', label: SERVICE_LABELS?.nfce || 'NFC-e' },
+    { key: 'mdfe', label: 'MDF-e' },
+    { key: 'cte', label: SERVICE_LABELS?.cte || 'CT-e' },
+    { key: 'cfe', label: SERVICE_LABELS?.cfe || 'CF-e' },
+  ];
 
-  // Linha 2: MDF-e / CT-e / CF-e
-  drawCheckbox(
-    SERVICE_LABELS?.cte || 'CT-e',
-    margin,
-    cursorY,
-    hasService('cte')
-  );
-  drawCheckbox(
-    'MDF-e',
-    margin + 40,
-    cursorY,
-    hasService('mdfe')
-  );
-  drawCheckbox(
-    SERVICE_LABELS?.cfe || 'CF-e',
-    margin + 80,
-    cursorY,
-    hasService('cfe')
-  );
-  cursorY += lineHeight + 4;
+  labels.forEach((item) => {
+    drawCheckbox(item.label, x, cursorY, hasService(item.key));
+    x += 30;
+  });
+  cursorY += lineHeight + 2;
 
-  // OBS
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('times', 'bold');
   doc.text('OBS:', margin, cursorY);
-  doc.setFont('helvetica', 'normal');
-  const obsText = get(company.note);
-  const obsLines = doc.splitTextToSize(obsText, pageWidth - margin * 2 - 12);
-  doc.text(obsLines, margin + 12, cursorY);
-  cursorY += Math.max(lineHeight, obsLines.length * 4 + 2);
+  doc.setFont('times', 'normal');
+  const obsServicos = getOr('services_note', 'services_obs');
+  const obsServicosLines = doc.splitTextToSize(
+    obsServicos,
+    pageWidth - margin * 2 - 15
+  );
+  doc.text(obsServicosLines, margin + 15, cursorY);
+  cursorY += Math.max(lineHeight, obsServicosLines.length * 4 + 2);
 
-  cursorY += 4;
+  cursorY += 2;
 
-  // ===== PLANO / VALOR / VENCIMENTO =====
-  doc.setFont('helvetica', 'bold');
-  doc.text('Tipo:', margin, cursorY);
-  doc.setFont('helvetica', 'normal');
-  doc.text(get(company.plan_type), margin + 15, cursorY);
+  // ===== TIPO / VALOR / VENCIMENTO =====
+  doc.setFont('times', 'bold');
+  doc.setFontSize(11);
+  doc.text('Tipo', margin, cursorY);
+  doc.setFont('times', 'normal');
+  doc.text(get(company.plan_type), margin + 12, cursorY);
 
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('times', 'bold');
   doc.text('Vlr.:', margin + 80, cursorY);
-  doc.setFont('helvetica', 'normal');
+  doc.setFont('times', 'normal');
   doc.text(formatMoney(company.value), margin + 95, cursorY);
 
-  doc.setFont('helvetica', 'bold');
-  doc.text('Vencimento em:', margin + 130, cursorY);
-  doc.setFont('helvetica', 'normal');
+  doc.setFont('times', 'bold');
+  doc.text('Vencimento em', margin + 130, cursorY);
+  doc.setFont('times', 'normal');
   doc.text(formatDate(company.due_date), margin + 170, cursorY);
   cursorY += lineHeight + 4;
 
   // ===== AUTORIZAÇÃO DE DIVULGAÇÃO =====
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('times', 'bold');
   doc.text('Autorização de divulgação:', margin, cursorY);
   cursorY += lineHeight;
 
-  doc.setFont('helvetica', 'normal');
-
+  doc.setFont('times', 'normal');
+  drawCheckbox('Site da Aciu', margin, cursorY, hasMarketing('site'));
   drawCheckbox(
-    'Site da ACIU',
-    margin,
-    cursorY,
-    hasMarketing('site')
-  );
-  drawCheckbox(
-    'WhatsApp',
+    'Grupo de whatsapp',
     margin + 55,
     cursorY,
     hasMarketing('whatsapp')
   );
   drawCheckbox(
     'E-mail marketing',
-    margin + 110,
+    margin + 115,
     cursorY,
     hasMarketing('email')
   );
-  cursorY += lineHeight + 6;
+  cursorY += lineHeight + 4;
 
-  // ===== CLÁUSULA RESUMIDA =====
+  // ===== CLÁUSULA EXATA DO MODELO =====
+  doc.setFont('times', 'normal');
+  doc.setFontSize(10);
+
   const clausula =
-    'DA ASSOCIAÇÃO COMERCIAL, INDUSTRIAL E AGRÍCOLA DE UMUARAMA – ACIU, CIENTE(S) de que, em caso de posterior desligamento da entidade, ' +
-    'as mensalidades e serviços em aberto permanecerão devidos até o mês do efetivo cancelamento, e que, em caso de inadimplência, ' +
-    'os débitos poderão ser encaminhados para cobrança e inclusão no banco de dados do SPC.';
+    'Solicito(amos) inscrição como SÓCIO(S) CONTRIBUINTE(S) DA ASSOCIAÇÃO COMERCIAL, ' +
+    'INDUSTRIAL E AGRÍCOLA DE UMUARAMA – ACIU, CIENTE(S) de que, em caso de posterior desligamento da ' +
+    'entidade, as mensalidades e serviços em débito até o mês da desfiliação, serão, obrigatoriamente pagas, sob pena de ' +
+    'execução, bem como SERÃO INCLUÍDOS NO SPC BRASIL OS DÉBITOS REF. AOS SERVIÇOS. Declaro ter ' +
+    'ciência do dever permanecer filiado à ACIU, pelo prazo mínimo de 6 (seis) meses, sob pena de inclusão no banco de ' +
+    'dados do SPC.';
 
-  const clausulaLines = doc.splitTextToSize(
-    clausula,
-    pageWidth - margin * 2
-  );
-
-  doc.setFont('helvetica', 'normal');
+  const clausulaLines = doc.splitTextToSize(clausula, pageWidth - margin * 2);
   clausulaLines.forEach((line) => {
     doc.text(line, margin, cursorY);
     cursorY += 4;
@@ -899,7 +993,15 @@ async function generateCompanyPdf(company) {
 
   cursorY += 8;
 
-  // ===== ASSINATURA DO PROPONENTE =====
+  // ===== LOCAL E DATA =====
+  doc.setFont('times', 'normal');
+  doc.setFontSize(11);
+  doc.text('Umuarama-PR_____/_______________/________', centerX, cursorY, {
+    align: 'center',
+  });
+  cursorY += lineHeight + 10;
+
+  // ===== ASSINATURA DA FIRMA PROPONENTE (COM OPÇÃO DE ASSINATURA DESENHADA) =====
   const signatureData = await resolveSignatureData(company);
   const sigBlockHeight = signatureData ? 30 : 0;
 
@@ -911,34 +1013,38 @@ async function generateCompanyPdf(company) {
       signatureData,
       getImageFormat(signatureData),
       imgX,
-      cursorY,
+      cursorY - 5,
       imgWidth,
       imgHeight
     );
-    cursorY += sigBlockHeight + 2;
   }
 
-  // Linha de firma proponente
-  doc.text('__________________________________', margin, cursorY);
-  cursorY += 4;
-  doc.text('Firma Proponente', margin + 10, cursorY);
+  // Linha de assinatura
+  doc.setFont('times', 'normal');
+  doc.text('__________________________________', centerX, cursorY + sigBlockHeight / 2, {
+    align: 'center',
+  });
+  cursorY += sigBlockHeight / 2 + 4;
+
+  doc.text(
+    'Carimbo e Assinatura da Firma Proponente',
+    centerX,
+    cursorY,
+    { align: 'center' }
+  );
   cursorY += lineHeight + 4;
 
   // ===== RODAPÉ – APROVAÇÃO DIRETORIA =====
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('times', 'bold');
   doc.text('APROVADO PELA DIRETORIA', margin, cursorY);
   cursorY += lineHeight;
 
-  doc.setFont('helvetica', 'normal');
+  doc.setFont('times', 'normal');
   doc.text('Em, ____/________/_____', margin, cursorY);
   cursorY += lineHeight + 4;
 
-  doc.text('Presidente: _______________________', margin, cursorY);
-  doc.text(
-    'Secretário: _______________________',
-    margin + 90,
-    cursorY
-  );
+  doc.text('Presidente: _____________________', margin, cursorY);
+  doc.text('Secretário: _____________________', margin + 90, cursorY);
 
   // ===== NOME DO ARQUIVO =====
   const safeName = (value) =>
@@ -961,6 +1067,7 @@ async function generateCompanyPdf(company) {
 
   doc.save(filename);
 }
+
 
 
 async function handleExportCompanyPdf(id, button) {
