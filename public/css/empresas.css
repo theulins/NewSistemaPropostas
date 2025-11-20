@@ -27,6 +27,12 @@ canvas.signature{width:100%;height:180px;background:#ffffff05;border-radius:8px}
 .option-grid label{display:flex;align-items:center;gap:6px;padding:8px 10px;border-radius:10px;border:1px solid #ffffff22;background:#ffffff0d}
 .option-grid input{width:auto}
 :root.light .option-grid label{background:#f5f6fb;border-color:#dfe3f5;color:#0b1020}
+.partner-list{display:flex;flex-direction:column;gap:10px}
+.partner-row{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap}
+.partner-row label{flex:1 1 200px}
+.partner-actions{display:flex;justify-content:flex-end}
+.partner-actions button{width:100%;max-width:260px}
+.partner-row .remove-partner{flex:0 0 auto;align-self:center;min-width:56px}
 .table-wrapper td button{min-width:96px}
 .row-actions{display:flex;flex-wrap:wrap;gap:6px}
 .row-actions button{flex:1 1 90px;padding:6px 8px;font-size:.85rem}
