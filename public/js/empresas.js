@@ -734,16 +734,10 @@ async function generateCompanyPdf(company) {
     return;
   }
 
-  // Helper para carregar o logo da pasta /media
-  const loadLogo = () =>
-    new Promise((resolve) => {
-      const img = new Image();
-      img.onload = () => resolve(img);
-      img.onerror = () => resolve(null);
-      img.src = '/media/logo.png'; // C:\xampp\htdocs\NewSistemaProposta\public\media\logo.png
-    });
+  // ===== Helpers =====
+  const digitsOnly = (value) =>
+    (value ? String(value) : '').replace(/\D/g, '');
 
-  // Helper para formatar telefone/cel/whatsapp
   const formatPhone = (value) => {
     const digits = digitsOnly(value);
     if (!digits) return '';
@@ -765,13 +759,19 @@ async function generateCompanyPdf(company) {
   const formatCpf = (value) => {
     const digits = digitsOnly(value);
     if (digits.length !== 11) return String(value || '');
-    return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`;
+    return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(
+      6,
+      9
+    )}-${digits.slice(9)}`;
   };
 
   const formatCnpj = (value) => {
     const digits = digitsOnly(value);
     if (digits.length !== 14) return String(value || '');
-    return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${digits.slice(8, 12)}-${digits.slice(12)}`;
+    return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(
+      5,
+      8
+    )}/${digits.slice(8, 12)}-${digits.slice(12)}`;
   };
 
   const formatZip = (value) => {
@@ -781,19 +781,10 @@ async function generateCompanyPdf(company) {
   };
 
   const formatEmployees = (value) => {
-    if (value == null || value === '') return '';
+    if (value == null || value === '') return '—';
     const num = Number(value);
     return Number.isFinite(num) ? String(num) : String(value);
   };
-
-  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
-  const margin = 15;
-  const pageWidth = doc.internal.pageSize.getWidth();
-  const pageHeight = doc.internal.pageSize.getHeight();
-  const centerX = pageWidth / 2;
-  let cursorY = 15;
-  const lineHeight = 6;
-  const currentYear = new Date().getFullYear();
 
   const get = (value) => (value ? String(value) : '');
 
@@ -808,53 +799,17 @@ async function generateCompanyPdf(company) {
   };
 
   const formatMoney = (value) => {
-    if (value == null || isNaN(value)) return '';
+    if (value == null || isNaN(value)) return '—';
     return typeof formatCurrency === 'function'
       ? formatCurrency(value)
-      : Number(value).toFixed(2);
+      : `R$ ${Number(value).toFixed(2).replace('.', ',')}`;
   };
 
   const formatDate = (value) => {
-    if (!value) return '';
+    if (!value) return '—';
     return typeof formatDateOnly === 'function'
       ? formatDateOnly(value)
       : new Date(value).toLocaleDateString('pt-BR');
-  };
-
-  const ensureSpace = (height = lineHeight) => {
-    if (cursorY + height > pageHeight - margin) {
-      doc.addPage();
-      cursorY = margin;
-    }
-  };
-
-  const drawLabeledValue = (label, value, options = {}) => {
-    const {
-      labelWidth = 36,
-      valueWidth = pageWidth - margin * 2 - labelWidth,
-      fontSize = 11,
-      gap = 2,
-    } = options;
-
-    doc.setFontSize(fontSize);
-    const safeValue = value || '—';
-    const lines = doc.splitTextToSize(safeValue, valueWidth);
-    const height = Math.max(lineHeight, lines.length * lineHeight);
-    ensureSpace(height);
-
-    doc.setFont('times', 'bold');
-    doc.text(label, margin, cursorY);
-    doc.setFont('times', 'normal');
-    doc.text(lines, margin + labelWidth, cursorY, { baseline: 'top' });
-    cursorY += height + gap;
-  };
-
-  const drawCenteredTitle = (text, fontSize, extraGap = 4) => {
-    doc.setFont('times', 'bold');
-    doc.setFontSize(fontSize);
-    ensureSpace(lineHeight + extraGap);
-    doc.text(text, centerX, cursorY, { align: 'center' });
-    cursorY += lineHeight + extraGap;
   };
 
   const hasService = (key) =>
@@ -864,6 +819,126 @@ async function generateCompanyPdf(company) {
   const hasMarketing = (key) =>
     Array.isArray(company.marketing_authorizations) &&
     company.marketing_authorizations.includes(key);
+
+  // ===== Doc base =====
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const margin = 10; // margem reduzida
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const centerX = pageWidth / 2;
+  let cursorY = 12;
+  const lineHeight = 5.2;
+  const currentYear = new Date().getFullYear();
+
+  const ensureSpace = (height) => {
+    if (cursorY + height > pageHeight - margin) {
+      doc.addPage();
+      cursorY = margin;
+    }
+  };
+
+  const drawLabeledLine = (label, value, options = {}) => {
+    const {
+      fontSize = 11,
+      gap = 1,
+      labelWidth: fixedLabelWidth,
+    } = options;
+
+    const safeValue =
+      value && String(value).trim() ? String(value) : '—';
+
+    doc.setFontSize(fontSize);
+    doc.setFont('times', 'bold');
+
+    const lw =
+      fixedLabelWidth ??
+      (doc.getTextWidth(label + ' ') + 1);
+
+    const maxValueWidth = pageWidth - margin * 2 - lw;
+    const valueLines = doc.splitTextToSize(
+      safeValue,
+      maxValueWidth > 10 ? maxValueWidth : 10
+    );
+
+    const blockHeight = valueLines.length * lineHeight;
+
+    ensureSpace(blockHeight);
+
+    doc.text(label, margin, cursorY);
+
+    doc.setFont('times', 'normal');
+    valueLines.forEach((line, idx) => {
+      const y = cursorY + idx * lineHeight;
+      doc.text(line, margin + lw, y);
+    });
+
+    cursorY += blockHeight + gap;
+  };
+
+  const drawInlineRow = (fields, options = {}) => {
+    const { fontSize = 11, gapY = 1 } = options;
+
+    doc.setFontSize(fontSize);
+
+    const prepared = fields.map((f, index) => {
+      const label = f.label;
+      const rawValue =
+        f.value && String(f.value).trim() ? String(f.value) : '—';
+
+      doc.setFont('times', 'bold');
+      const labelWidth =
+        f.labelWidth ?? doc.getTextWidth(label + ' ') + 1;
+
+      const x = f.x;
+      let valueMaxX;
+      if (index < fields.length - 1) {
+        valueMaxX = fields[index + 1].x - 2;
+      } else {
+        valueMaxX = pageWidth - margin;
+      }
+
+      const valueMaxWidth = Math.max(
+        10,
+        valueMaxX - (x + labelWidth)
+      );
+
+      doc.setFont('times', 'normal');
+      const valueLines = doc.splitTextToSize(rawValue, valueMaxWidth);
+      const height = valueLines.length * lineHeight;
+
+      return { label, x, labelWidth, valueLines, height };
+    });
+
+    const rowHeight =
+      prepared.length > 0
+        ? Math.max(...prepared.map((p) => p.height))
+        : lineHeight;
+
+    ensureSpace(rowHeight);
+
+    prepared.forEach((p) => {
+      doc.setFont('times', 'bold');
+      doc.text(p.label, p.x, cursorY);
+
+      doc.setFont('times', 'normal');
+      const valueX = p.x + p.labelWidth;
+      p.valueLines.forEach((line, idx) => {
+        const y = cursorY + idx * lineHeight;
+        doc.text(line, valueX, y);
+      });
+    });
+
+    cursorY += rowHeight + gapY;
+  };
+
+  const drawTitleCentered = (text, fontSize = 13, extraGap = 3) => {
+    const h = lineHeight + extraGap;
+    ensureSpace(h);
+    doc.setFont('times', 'bold');
+    doc.setFontSize(fontSize);
+    doc.text(text, centerX, cursorY, { align: 'center' });
+    cursorY += h;
+  };
 
   const drawCheckbox = (label, x, y, checked) => {
     const boxSize = 4;
@@ -875,7 +950,15 @@ async function generateCompanyPdf(company) {
     doc.text(label, x + boxSize + 2, y);
   };
 
-  // ===== CABEÇALHO COM LOGO =====
+  // ===== Logo e cabeçalho =====
+  const loadLogo = () =>
+    new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => resolve(null);
+      img.src = '/media/logo.png';
+    });
+
   doc.setFont('times', 'normal');
   doc.setFontSize(11);
 
@@ -883,159 +966,268 @@ async function generateCompanyPdf(company) {
   if (logoImg) {
     const logoWidth = 35;
     const logoHeight = 18;
-    const logoX = margin;
-    const logoY = cursorY;
-    doc.addImage(logoImg, 'PNG', logoX, logoY, logoWidth, logoHeight);
+    doc.addImage(logoImg, 'PNG', margin, cursorY, logoWidth, logoHeight);
   }
 
-  // Título principal – PROPOSTA ASSOCIADOS ANO
   doc.setFont('times', 'bold');
   doc.setFontSize(14);
   doc.text(`PROPOSTA ASSOCIADOS ${currentYear}`, centerX, cursorY + 5, {
     align: 'center',
   });
 
-  // Subtítulo – PROPOSTA DE ADMISSÃO DE SÓCIO
   doc.setFontSize(13);
   doc.text('PROPOSTA DE ADMISSÃO DE SÓCIO', centerX, cursorY + 13, {
     align: 'center',
   });
 
-  cursorY += 25;
+  cursorY += 24;
 
-  // ===== DADOS DA EMPRESA =====
-  drawLabeledValue('Razão Social:', get(company.corporate_name), { labelWidth: 32 });
-  drawLabeledValue('Denominação Comercial:', get(company.fantasy_name), { labelWidth: 50 });
-  drawLabeledValue('Endereço:', get(company.address), { labelWidth: 25 });
-  drawLabeledValue('CEP:', formatZip(get(company.zip)), { labelWidth: 18 });
-  drawLabeledValue('E-mail:', get(company.email), { labelWidth: 18 });
-  drawLabeledValue('Instagram:', get(company.instagram), { labelWidth: 25 });
-  drawLabeledValue('Telefone:', formatPhone(get(company.phone)), { labelWidth: 23 });
-  drawLabeledValue('CEL:', formatPhone(get(company.cel)), { labelWidth: 15 });
-  drawLabeledValue('WhatsApp:', formatPhone(get(company.whatsapp)), { labelWidth: 23 });
-  drawLabeledValue('Cidade:', get(company.city), { labelWidth: 20 });
-  drawLabeledValue('Estado:', get(company.state), { labelWidth: 20 });
-  drawLabeledValue('CNPJ:', formatCnpj(get(company.cnpj)), { labelWidth: 18 });
-  drawLabeledValue('Inscrição Estadual:', getOr('state_registration', 'ie', 'ie_number'), {
-    labelWidth: 45,
-  });
-  drawLabeledValue('Ramo de Atividade:', getOr('activity_branch', 'business_activity'), {
-    labelWidth: 45,
-  });
-  drawLabeledValue('Data Fundação:', formatDate(getOr('foundation_date', 'opening_date')));
-  drawLabeledValue(
-    'Quantidade de Funcionários:',
-    formatEmployees(getOr('employees_count', 'employees')),
-    { labelWidth: 65 }
-  );
-  drawLabeledValue('Setor:', get(company.sector), { labelWidth: 18 });
-  drawLabeledValue('Esc.de Contabilidade:', getOr('accounting_office', 'accounting'), {
-    labelWidth: 55,
-  });
-  drawLabeledValue('Indicação:', getOr('indication', 'referred_by'), { labelWidth: 25 });
+  // ===== Dados da empresa =====
 
+  drawLabeledLine('Razão Social:', get(company.corporate_name), {
+    labelWidth: 32,
+  });
+
+  drawLabeledLine('Denominação Comercial:', get(company.fantasy_name), {
+    labelWidth: 50,
+  });
+
+  drawLabeledLine('Endereço:', get(company.address), {
+    labelWidth: 25,
+  });
+
+  // CEP: ... Cidade (inteira): ... Estado: ...
+  const cityDisplay = get(company.city);
+
+  drawInlineRow([
+    {
+      label: 'CEP:',
+      value: formatZip(get(company.zip)),
+      x: margin,
+    },
+    {
+      label: 'Cidade:',
+      value: cityDisplay,
+      x: margin + 60,
+    },
+    {
+      label: 'Estado:',
+      value: get(company.state),
+      x: margin + 135,
+    },
+  ]);
+
+  // === E-mail / Instagram / Telefone - SEM QUEBRA DE TEXTO ===
+  ensureSpace(lineHeight * 1.5);
+  doc.setFontSize(10); // levemente menor pra caber tudo
   doc.setFont('times', 'bold');
-  doc.text('Observação:', margin, cursorY);
+
+  let x = margin;
+  const yRowEmail = cursorY;
+
+  const emailLabel = 'E-mail:';
+  doc.text(emailLabel, x, yRowEmail);
+  let wEmailLabel = doc.getTextWidth(emailLabel + ' ');
   doc.setFont('times', 'normal');
-  const obsEmpresa = getOr('observation', 'note');
-  const obsEmpresaLines = doc.splitTextToSize(obsEmpresa, pageWidth - margin * 2 - 20);
-  ensureSpace(Math.max(lineHeight, obsEmpresaLines.length * 4 + 2));
-  doc.text(obsEmpresaLines, margin + 22, cursorY, { baseline: 'top' });
-  cursorY += Math.max(lineHeight, obsEmpresaLines.length * 4 + 2);
+  const emailValue = get(company.email) || '—';
+  doc.text(emailValue, x + wEmailLabel, yRowEmail);
 
-  cursorY += 2;
+  // Instagram
+  doc.setFont('times', 'bold');
+  const xInstagram = margin + 80;
+  const instagramLabel = 'Instagram:';
+  doc.text(instagramLabel, xInstagram, yRowEmail);
+  let wInstagramLabel = doc.getTextWidth(instagramLabel + ' ');
+  doc.setFont('times', 'normal');
+  const instagramValue = get(company.instagram) || '—';
+  doc.text(instagramValue, xInstagram + wInstagramLabel, yRowEmail);
 
-  // ===== SÓCIOS OU DIRETORES =====
-  drawCenteredTitle('SÓCIOS OU DIRETORES', 11, 0);
+  // Telefone
+  doc.setFont('times', 'bold');
+  const xTelefone = margin + 150;
+  const telefoneLabel = 'Telefone:';
+  doc.text(telefoneLabel, xTelefone, yRowEmail);
+  let wTelefoneLabel = doc.getTextWidth(telefoneLabel + ' ');
+  doc.setFont('times', 'normal');
+  const telefoneValue = formatPhone(get(company.phone)) || '—';
+  doc.text(telefoneValue, xTelefone + wTelefoneLabel, yRowEmail);
+
+  cursorY = yRowEmail + lineHeight; // avança só uma linha
+
+  // CEL: ... WhatsApp: ...
+  doc.setFontSize(11);
+  drawInlineRow(
+    [
+      {
+        label: 'CEL:',
+        value: formatPhone(get(company.cel)),
+        x: margin,
+      },
+      {
+        label: 'WhatsApp:',
+        value: formatPhone(get(company.whatsapp)),
+        x: margin + 80,
+      },
+    ],
+    { gapY: 1 }
+  );
+
+  // CNPJ: ... Inscrição Estadual: ...
+  drawInlineRow(
+    [
+      {
+        label: 'CNPJ:',
+        value: formatCnpj(get(company.cnpj)),
+        x: margin,
+      },
+      {
+        label: 'Inscrição Estadual:',
+        value: getOr('state_registration', 'ie', 'ie_number'),
+        x: margin + 95,
+      },
+    ],
+    { gapY: 1 }
+  );
+
+  // Ramo de Atividade:
+  drawLabeledLine(
+    'Ramo de Atividade:',
+    getOr('activity_branch', 'business_activity'),
+    { labelWidth: 45 }
+  );
+
+  // Data Fundação: ... Quantidade de Funcionários: ...
+  drawInlineRow(
+    [
+      {
+        label: 'Data Fundação:',
+        value: formatDate(getOr('foundation_date', 'opening_date')),
+        x: margin,
+      },
+      {
+        label: 'Quantidade de Funcionários:',
+        value: formatEmployees(getOr('employees_count', 'employees')),
+        x: margin + 90,
+      },
+    ],
+    { gapY: 1 }
+  );
+
+  // Setor:
+  drawLabeledLine('Setor:', get(company.sector), {
+    labelWidth: 18,
+  });
+
+  // Esc.de Contabilidade: ... Indicação: ...
+  drawInlineRow(
+    [
+      {
+        label: 'Esc.de Contabilidade:',
+        value: getOr('accounting_office', 'accounting'),
+        x: margin,
+      },
+      {
+        label: 'Indicação:',
+        value: getOr('indication', 'referred_by'),
+        x: margin + 115,
+      },
+    ],
+    { gapY: 1 }
+  );
+
+  // Observação:
+  drawLabeledLine('Observação:', getOr('observation', 'note'), {
+    labelWidth: 30,
+  });
+
+  // ===== Sócios ou Diretores =====
+  drawTitleCentered('SÓCIOS OU DIRETORES', 11, 1);
 
   const partners = Array.isArray(company.partners) ? company.partners : [];
-
   for (let i = 0; i < 4; i++) {
     const partner = partners[i] || {};
     const cpf = formatCpf(get(partner.cpf));
-    const partnerLine = `${get(partner.name)}${cpf ? '  |  CPF: ' + cpf : ''}`.trim();
-    drawLabeledValue(`Sócio/Diretor ${i + 1}:`, partnerLine, {
-      labelWidth: 38,
-      gap: 1,
+    const line =
+      get(partner.name) + (cpf ? ` | CPF: ${cpf}` : '');
+    drawLabeledLine(`Sócio/Diretor ${i + 1}:`, line, {
+      labelWidth: 42,
     });
   }
 
-  cursorY += 2;
+  // ===== Serviços contratados =====
+  drawTitleCentered('Serviços Contratados:', 11, 0);
 
-  // ===== SERVIÇOS CONTRATADOS =====
-  doc.setFont('times', 'bold');
-  doc.setFontSize(11);
+  // SPC NF-e NFC-e CT-e CF-e com checkbox ao lado
   ensureSpace(lineHeight * 2);
-  doc.text('Serviços Contratados:', margin, cursorY);
-  cursorY += lineHeight;
-
   doc.setFont('times', 'normal');
+  doc.setFontSize(11);
+  let yServ = cursorY;
+  let xServ = margin;
 
-  let x = margin;
-  const labels = [
+  const svcItems = [
     { key: 'spc', label: SERVICE_LABELS?.spc || 'SPC' },
     { key: 'nfe', label: SERVICE_LABELS?.nfe || 'NF-e' },
     { key: 'nfce', label: SERVICE_LABELS?.nfce || 'NFC-e' },
-    { key: 'mdfe', label: 'MDF-e' },
     { key: 'cte', label: SERVICE_LABELS?.cte || 'CT-e' },
     { key: 'cfe', label: SERVICE_LABELS?.cfe || 'CF-e' },
   ];
 
-  labels.forEach((item, index) => {
-    drawCheckbox(item.label, x, cursorY, hasService(item.key));
-    x += 32;
-    if (index === 2) {
-      cursorY += lineHeight;
-      ensureSpace(lineHeight);
-      x = margin;
-    }
+  svcItems.forEach((item) => {
+    drawCheckbox(item.label, xServ, yServ, hasService(item.key));
+    xServ += 32;
   });
-  cursorY += lineHeight + 2;
 
-  doc.setFont('times', 'bold');
-  doc.text('OBS:', margin, cursorY);
-  doc.setFont('times', 'normal');
-  const obsServicos = getOr('services_note', 'services_obs');
-  const obsServicosLines = doc.splitTextToSize(obsServicos, pageWidth - margin * 2 - 15);
-  ensureSpace(Math.max(lineHeight, obsServicosLines.length * 4 + 2));
-  doc.text(obsServicosLines, margin + 15, cursorY, { baseline: 'top' });
-  cursorY += Math.max(lineHeight, obsServicosLines.length * 4 + 2);
+  cursorY = yServ + lineHeight;
 
-  cursorY += 2;
+  // OBS: — Tipo: —
+  const obsServ = getOr('services_note', 'services_obs') || '—';
+  const tipoTexto = get(company.plan_type) || '—';
 
-  // ===== TIPO / VALOR / VENCIMENTO =====
-  doc.setFont('times', 'bold');
-  doc.setFontSize(11);
+  drawInlineRow(
+    [
+      {
+        label: 'OBS:',
+        value: obsServ,
+        x: margin,
+      },
+      {
+        label: 'Tipo:',
+        value: tipoTexto,
+        x: margin + 110,
+      },
+    ],
+    { gapY: 1 }
+  );
+
+  // Vlr.: R$ ...
+  drawLabeledLine('Vlr.:', formatMoney(company.value), {
+    labelWidth: 15,
+  });
+
+  // Vencimento em: dd/mm/aaaa
+  drawLabeledLine(
+    'Vencimento em:',
+    formatDate(company.due_date),
+    { labelWidth: 35 }
+  );
+
+  // ===== Autorização de divulgação =====
+  drawTitleCentered('Autorização de divulgação:', 11, 0);
+
   ensureSpace(lineHeight * 2);
-  doc.text('Tipo', margin, cursorY);
   doc.setFont('times', 'normal');
-  doc.text(get(company.plan_type) || '—', margin + 12, cursorY, {
-    maxWidth: pageWidth - margin * 2 - 12,
-  });
+  x = margin;
+  let yAuth = cursorY;
 
-  doc.setFont('times', 'bold');
-  doc.text('Vlr.:', margin + 80, cursorY);
-  doc.setFont('times', 'normal');
-  doc.text(formatMoney(company.value) || '—', margin + 95, cursorY);
+  drawCheckbox('Site da Aciu', x, yAuth, hasMarketing('site'));
+  x += 60;
+  drawCheckbox('Grupo de whatsapp', x, yAuth, hasMarketing('whatsapp'));
+  x += 70;
+  drawCheckbox('E-mail marketing', x, yAuth, hasMarketing('email'));
 
-  doc.setFont('times', 'bold');
-  doc.text('Vencimento em', margin + 130, cursorY);
-  doc.setFont('times', 'normal');
-  doc.text(formatDate(company.due_date) || '—', margin + 170, cursorY);
-  cursorY += lineHeight + 4;
+  cursorY = yAuth + lineHeight + 1;
 
-  // ===== AUTORIZAÇÃO DE DIVULGAÇÃO =====
-  doc.setFont('times', 'bold');
-  doc.text('Autorização de divulgação:', margin, cursorY);
-  cursorY += lineHeight;
-
-  doc.setFont('times', 'normal');
-  drawCheckbox('Site da Aciu', margin, cursorY, hasMarketing('site'));
-  drawCheckbox('Grupo de whatsapp', margin + 65, cursorY, hasMarketing('whatsapp'));
-  drawCheckbox('E-mail marketing', margin + 140, cursorY, hasMarketing('email'));
-  cursorY += lineHeight + 4;
-
-  // ===== CLÁUSULA =====
+  // ===== Cláusula =====
   doc.setFont('times', 'normal');
   doc.setFontSize(10);
 
@@ -1047,53 +1239,63 @@ async function generateCompanyPdf(company) {
     'ciência do dever permanecer filiado à ACIU, pelo prazo mínimo de 6 (seis) meses, sob pena de inclusão no banco de ' +
     'dados do SPC.';
 
-  const clausulaLines = doc.splitTextToSize(clausula, pageWidth - margin * 2);
+  const clausulaLines = doc.splitTextToSize(
+    clausula,
+    pageWidth - margin * 2
+  );
   clausulaLines.forEach((line) => {
     ensureSpace(4);
     doc.text(line, margin, cursorY);
     cursorY += 4;
   });
 
-  cursorY += 8;
+  cursorY += 3;
 
-  // ===== LOCAL E DATA =====
+  // ===== Local e data =====
   doc.setFont('times', 'normal');
   doc.setFontSize(11);
   ensureSpace(lineHeight * 2);
   doc.text('Umuarama-PR_____/_______________/________', centerX, cursorY, {
     align: 'center',
   });
-  cursorY += lineHeight + 10;
+  cursorY += lineHeight + 5;
 
-  // ===== ASSINATURA DA FIRMA PROPONENTE =====
+  // ===== Assinatura =====
   const signatureData = await resolveSignatureData(company);
-  const sigBlockHeight = signatureData ? 30 : 0;
+  const sigBlockHeight = signatureData ? 24 : 0;
   ensureSpace(sigBlockHeight + lineHeight * 3);
 
   if (signatureData) {
     const imgWidth = 60;
-    const imgHeight = 25;
+    const imgHeight = 22;
     const imgX = centerX - imgWidth / 2;
     doc.addImage(
       signatureData,
       getImageFormat(signatureData),
       imgX,
-      cursorY - 5,
+      cursorY - 3,
       imgWidth,
       imgHeight
     );
   }
 
-  doc.setFont('times', 'normal');
-  doc.text('__________________________________', centerX, cursorY + sigBlockHeight / 2, {
-    align: 'center',
-  });
-  cursorY += sigBlockHeight / 2 + 4;
+  doc.text(
+    '__________________________________',
+    centerX,
+    cursorY + sigBlockHeight / 2,
+    { align: 'center' }
+  );
+  cursorY += sigBlockHeight / 2 + 3;
 
-  doc.text('Carimbo e Assinatura da Firma Proponente', centerX, cursorY, { align: 'center' });
-  cursorY += lineHeight + 4;
+  doc.text(
+    'Carimbo e Assinatura da Firma Proponente',
+    centerX,
+    cursorY,
+    { align: 'center' }
+  );
+  cursorY += lineHeight + 3;
 
-  // ===== RODAPÉ – APROVAÇÃO DIRETORIA =====
+  // ===== Rodapé – Diretoria =====
   ensureSpace(lineHeight * 4);
   doc.setFont('times', 'bold');
   doc.text('APROVADO PELA DIRETORIA', margin, cursorY);
@@ -1101,12 +1303,12 @@ async function generateCompanyPdf(company) {
 
   doc.setFont('times', 'normal');
   doc.text('Em, ____/________/_____', margin, cursorY);
-  cursorY += lineHeight + 4;
+  cursorY += lineHeight + 3;
 
   doc.text('Presidente: _____________________', margin, cursorY);
   doc.text('Secretário: _____________________', margin + 90, cursorY);
 
-  // ===== NOME DO ARQUIVO =====
+  // ===== Nome do arquivo =====
   const safeName = (value) =>
     String(value || '')
       .normalize('NFD')
@@ -1127,6 +1329,12 @@ async function generateCompanyPdf(company) {
 
   doc.save(filename);
 }
+
+
+
+
+
+
 
 
 
