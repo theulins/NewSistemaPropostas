@@ -25,9 +25,17 @@ if (!fs.existsSync(uploadsDir)) {
 const app = express();
 
 app.disable('x-powered-by');
-app.use(helmet({
-  crossOriginResourcePolicy: false,
-}));
+app.use(
+  helmet({
+    crossOriginResourcePolicy: false,
+    contentSecurityPolicy: {
+      useDefaults: true,
+      directives: {
+        "script-src": ["'self'", 'https://cdnjs.cloudflare.com'],
+      },
+    },
+  })
+);
 
 const corsOrigin = process.env.CORS_ORIGIN || '*';
 app.use(
