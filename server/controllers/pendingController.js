@@ -15,7 +15,7 @@ export const listPending = async (req, res) => {
     params.push(status);
   }
 
-  const sql = `SELECT id, fantasy_name, corporate_name, cnpj, city, state, plan_type, value, commission_rate, due_date, status
+  const sql = `SELECT id, fantasy_name, corporate_name, cnpj, city, state, plan_type, value, commission_rate, due_date, status, updated_by
     FROM companies ${where} ORDER BY updated_at DESC`;
 
   const [rows] = await pool.query(sql, params);
@@ -24,7 +24,7 @@ export const listPending = async (req, res) => {
 };
 
 export const approvePending = async (req, res) => {
-  const { company_id, plan_type, value, commission_rate, due_date } = req.body;
+  const { company_id, plan_type, value, commission_rate, due_date, commission_owner_id } = req.body;
 
   if (!company_id) {
     return res.status(400).json({ message: 'company_id é obrigatório.' });
@@ -40,6 +40,8 @@ export const approvePending = async (req, res) => {
   if (numericRate !== null && (Number.isNaN(numericRate) || numericRate < 0)) {
     return res.status(400).json({ message: 'Taxa inválida.' });
   }
+
+  const ownerId = commission_owner_id ? Number(commission_owner_id) : req.user?.id || null;
 
   await pool.query('START TRANSACTION');
   try {
@@ -66,7 +68,7 @@ export const approvePending = async (req, res) => {
         numericValue,
         numericRate,
         nullIfEmpty(due_date),
-        req.user?.id || null,
+        ownerId,
         company_id,
       ]
     );

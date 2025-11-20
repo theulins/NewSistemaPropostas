@@ -1,8 +1,8 @@
 @import url('./base.css');
 
 main{display:grid;gap:16px;margin-top:16px}
-.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px}
-.kpi{padding:16px;border-radius:14px;background:#ffffff0f;border:1px solid #ffffff1a;display:flex;flex-direction:column;gap:6px}
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;align-items:stretch}
+.kpi{padding:16px;border-radius:var(--card-radius);background:#ffffff0f;border:1px solid #ffffff1a;display:flex;flex-direction:column;gap:6px;min-height:120px}
 .kpi span{font-size:0.85rem;color:var(--muted)}
 .kpi strong{font-size:1.6rem}
 .card-header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
@@ -12,6 +12,8 @@ main{display:grid;gap:16px;margin-top:16px}
 .list-table table th,.list-table table td{text-align:center;vertical-align:middle}
 .list-table table td:first-child{text-align:left}
 .list-table .empty{color:var(--muted);font-style:italic}
+.by-user{margin-top:12px}
+.by-user table{min-width:400px}
 .badge{display:inline-flex;align-items:center;gap:6px}
 @media (max-width:640px){
   .card-header{flex-direction:column;align-items:flex-start}

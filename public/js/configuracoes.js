@@ -10,6 +10,7 @@ import {
 const designForm = document.getElementById('design-form');
 const resetButton = document.getElementById('reset-design');
 const previewBox = document.querySelector('.preview');
+const radiusHint = document.getElementById('radius-hint');
 const usersPanel = document.getElementById('users-panel');
 const userForm = document.getElementById('user-form');
 const usersTable = document.getElementById('users-table');
@@ -19,16 +20,21 @@ const passwordWrapper = document.getElementById('password-wrapper');
 let editingId = null;
 let profile;
 
-function updatePreview(color) {
+function updatePreview(color, radius) {
   previewBox.style.background = color;
   document.documentElement.style.setProperty('--primary', color);
+  if (radius !== undefined) {
+    document.documentElement.style.setProperty('--card-radius', `${radius}px`);
+    radiusHint.textContent = `${radius}px`;
+  }
 }
 
 function fillDesignForm(settings) {
   if (!settings) return;
   designForm.theme_preference.value = settings.theme_preference || 'system';
   designForm.primary.value = settings.primary || '#4f86ff';
-  updatePreview(designForm.primary.value);
+  designForm.card_radius.value = settings.card_radius || 16;
+  updatePreview(designForm.primary.value, Number(designForm.card_radius.value));
 }
 
 function resetUserForm() {
@@ -111,8 +117,12 @@ async function init() {
   fillDesignForm(context.settings);
 
   designForm.addEventListener('change', () => {
-    applyTheme(designForm.theme_preference.value, designForm.primary.value);
-    updatePreview(designForm.primary.value);
+    applyTheme(
+      designForm.theme_preference.value,
+      designForm.primary.value,
+      Number(designForm.card_radius.value)
+    );
+    updatePreview(designForm.primary.value, Number(designForm.card_radius.value));
   });
 
   designForm.addEventListener('submit', async (event) => {
@@ -120,6 +130,7 @@ async function init() {
     const payload = {
       theme_preference: designForm.theme_preference.value,
       primary: designForm.primary.value,
+      card_radius: Number(designForm.card_radius.value),
     };
     try {
       await authFetch('/settings', {
@@ -135,12 +146,13 @@ async function init() {
   resetButton.addEventListener('click', async () => {
     designForm.theme_preference.value = 'system';
     designForm.primary.value = '#4f86ff';
-    updatePreview('#4f86ff');
-    applyTheme('system', '#4f86ff');
+    designForm.card_radius.value = 16;
+    updatePreview('#4f86ff', 16);
+    applyTheme('system', '#4f86ff', 16);
     try {
       await authFetch('/settings', {
         method: 'PUT',
-        body: JSON.stringify({ theme_preference: 'system', primary: '#4f86ff' }),
+        body: JSON.stringify({ theme_preference: 'system', primary: '#4f86ff', card_radius: 16 }),
       });
       showSuccess('Tema restaurado para o padrão.');
     } catch (error) {

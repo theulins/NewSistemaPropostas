@@ -68,10 +68,12 @@ export const getCommissions = async (req, res) => {
     WHERE status = 'ativo'
       AND approved_at IS NOT NULL
       AND commission_exempt = 0
-      AND YEAR(approved_at) = ?
-      AND MONTH(approved_at) = ?
+      AND (
+        (due_date IS NOT NULL AND YEAR(due_date) = ? AND MONTH(due_date) = ?)
+        OR (due_date IS NULL AND YEAR(approved_at) = ? AND MONTH(approved_at) = ?)
+      )
   `;
-  const params = [year, monthIndex];
+  const params = [year, monthIndex, year, monthIndex];
 
   if (!isAdmin && currentUserId) {
     sql += ' AND updated_by = ?';
@@ -107,6 +109,34 @@ export const getCommissions = async (req, res) => {
       ? Number((totalValue * fallbackRate).toFixed(2))
       : 0;
 
+  let byUsers = [];
+  if (isAdmin) {
+    const [userRows] = await pool.query(
+      `SELECT u.id, u.name,
+        COUNT(c.id) AS totalCompanies,
+        IFNULL(SUM(CASE WHEN c.commission_rate IS NOT NULL THEN c.value * c.commission_rate ELSE 0 END),0) AS totalCommission,
+        IFNULL(SUM(c.value),0) AS totalValue,
+        AVG(c.commission_rate) AS avgRate
+       FROM companies c
+       LEFT JOIN users u ON u.id = c.updated_by
+       WHERE c.status = 'ativo'
+        AND c.approved_at IS NOT NULL
+        AND c.commission_exempt = 0
+        AND ((c.due_date IS NOT NULL AND YEAR(c.due_date) = ? AND MONTH(c.due_date) = ?) OR (c.due_date IS NULL AND YEAR(c.approved_at) = ? AND MONTH(c.approved_at) = ?))
+       GROUP BY u.id, u.name
+       ORDER BY totalCommission DESC`,
+      [year, monthIndex, year, monthIndex]
+    );
+    byUsers = userRows.map((row) => ({
+      user_id: row.id,
+      name: row.name || 'Sem responsável',
+      totalCompanies: Number(row.totalCompanies || 0),
+      totalValue: Number(row.totalValue || 0),
+      totalCommission: Number(row.totalCommission || 0),
+      avgRate: row.avgRate !== null ? Number(row.avgRate) : null,
+    }));
+  }
+
   return res.json({
     totalValue,
     defaultRate: defaultRate !== null ? Number(defaultRate) : undefined,
@@ -114,5 +144,6 @@ export const getCommissions = async (req, res) => {
     approvedCommission,
     approvedCompanies,
     approvedRate,
+    byUsers,
   });
 };;

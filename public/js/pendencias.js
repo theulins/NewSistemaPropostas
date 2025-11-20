@@ -2,9 +2,23 @@ import { initializePage, authFetch, showError, showSuccess, promptText } from '.
 
 const tableBody = document.getElementById('pending-table');
 const filterForm = document.getElementById('pending-filter');
+let ownerOptions = [];
+let currentProfile = null;
 
 function formatCurrency(value) {
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value || 0);
+}
+
+function renderOwnerCell(selectedId) {
+  if (!ownerOptions.length) {
+    return '<span class="badge">Padrão</span>';
+  }
+  const options = ownerOptions
+    .map(
+      (user) => `<option value="${user.id}" ${selectedId && Number(selectedId) === user.id ? 'selected' : ''}>${user.name}</option>`
+    )
+    .join('');
+  return `<select class="owner-select">${options}</select>`;
 }
 
 function renderRow(item) {
@@ -20,6 +34,7 @@ function renderRow(item) {
       <td><input type="number" class="rate-input" min="0" max="100" step="0.01" value="${ratePercent || ''}" aria-label="Taxa"></td>
       <td class="commission-cell">${formatCurrency(commissionValue)}</td>
       <td><input type="date" class="due-input" value="${item.due_date ? item.due_date.split('T')[0] : ''}" aria-label="Vencimento"></td>
+      <td>${renderOwnerCell(item.updated_by)}</td>
       <td>
         <div class="action-buttons">
           <button type="button" class="primary approve-btn">Aprovar</button>
@@ -56,6 +71,8 @@ async function approveRow(row) {
   const value = Number(row.querySelector('.value-input').value || 0);
   const ratePercent = Number(row.querySelector('.rate-input').value || 0);
   const dueDate = row.querySelector('.due-input').value || null;
+  const ownerSelect = row.querySelector('.owner-select');
+  const ownerId = ownerSelect ? Number(ownerSelect.value) : null;
 
   try {
     await authFetch('/empresas/pending/approve', {
@@ -66,6 +83,7 @@ async function approveRow(row) {
         value,
         commission_rate: ratePercent / 100,
         due_date: dueDate,
+        commission_owner_id: ownerId || currentProfile?.id,
       }),
     });
     row.remove();
@@ -104,8 +122,18 @@ async function rejectRow(row) {
 }
 
 async function init() {
-  if (!(await initializePage('pendencias'))) {
+  const context = await initializePage('pendencias');
+  if (!context) {
     return;
+  }
+  currentProfile = context.profile;
+  if (currentProfile?.role === 'admin') {
+    try {
+      const users = await authFetch('/users');
+      ownerOptions = users.items.filter((user) => user.role !== 'viewer');
+    } catch (error) {
+      console.warn('Não foi possível carregar responsáveis', error);
+    }
   }
   await loadPending({ status: 'pendente' });
 

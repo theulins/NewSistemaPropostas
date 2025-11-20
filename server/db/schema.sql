@@ -64,7 +64,8 @@ ON DUPLICATE KEY UPDATE name = VALUES(name);
 INSERT INTO settings(`key`, `value`) VALUES
   ('theme_preference','system'),
   ('primary','#4f86ff'),
-  ('default_commission_rate','0.10')
+  ('default_commission_rate','0.10'),
+  ('card_radius','16')
 ON DUPLICATE KEY UPDATE `value` = VALUES(`value`);
 
 INSERT INTO companies (
