@@ -312,6 +312,28 @@ function preparePayload(formData) {
   return payload;
 }
 
+function getFieldValue(name) {
+  if (!companyForm?.elements[name]) return '';
+  return companyForm.elements[name].value?.trim() || '';
+}
+
+function hasSelectedServiceArea() {
+  if (!companyForm) return false;
+  return companyForm.querySelectorAll('input[name="services_contracted"]:checked').length > 0;
+}
+
+function validateCompanyForm(partners = []) {
+  const cnpjDigits = digitsOnly(getFieldValue('cnpj'));
+  if (!cnpjDigits) return 'CNPJ é obrigatório.';
+  if (cnpjDigits.length !== 14) return 'Informe um CNPJ válido com 14 dígitos.';
+  if (!getFieldValue('ie')) return 'Inscrição Estadual é obrigatória.';
+  if (!getFieldValue('email')) return 'E-mail é obrigatório.';
+  if (!getFieldValue('phone')) return 'Telefone é obrigatório.';
+  if (!hasSelectedServiceArea()) return 'Selecione pelo menos uma área do serviço contratado.';
+  if (!partners.length) return 'Inclua ao menos um sócio ou diretor.';
+  return null;
+}
+
 function createPartnerRow(partner = {}) {
   const row = document.createElement('div');
   row.className = 'partner-row';
@@ -1442,6 +1464,11 @@ async function init() {
     }
     const partners = collectPartnersFromForm();
     if (partners === null) return;
+    const validationMessage = validateCompanyForm(partners);
+    if (validationMessage) {
+      showError(validationMessage);
+      return;
+    }
     const formData = new FormData(companyForm);
     const payload = preparePayload(formData);
     payload.partners = partners;
