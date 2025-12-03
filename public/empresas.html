@@ -87,12 +87,12 @@
         <fieldset>
           <legend>Identificação</legend>
           <div class="flex">
-            <label><span>Nome fantasia</span><input name="fantasy_name" required></label>
+            <label><span>Nome fantasia</span><input name="fantasy_name"></label>
             <label><span>Razão social</span><input name="corporate_name"></label>
           </div>
           <div class="flex">
-            <label><span>CNPJ</span><input name="cnpj" maxlength="18"></label>
-            <label><span>Inscrição Estadual</span><input name="ie"></label>
+            <label><span>CNPJ</span><input name="cnpj" maxlength="18" required></label>
+            <label><span>Inscrição Estadual</span><input name="ie" required></label>
           </div>
           <div class="cnpj-lookup">
             <button type="button" class="ghost" id="cnpj-lookup-btn">Buscar dados pelo CNPJ</button>
@@ -113,8 +113,8 @@
         <fieldset>
           <legend>Contatos</legend>
           <div class="flex">
-            <label><span>E-mail</span><input type="email" name="email"></label>
-            <label><span>Telefone</span><input name="phone" inputmode="tel"></label>
+            <label><span>E-mail</span><input type="email" name="email" required></label>
+            <label><span>Telefone</span><input name="phone" inputmode="tel" required></label>
             <label><span>Celular</span><input name="cel" inputmode="tel"></label>
           </div>
           <div class="flex">
@@ -167,6 +167,9 @@
 
         <fieldset>
           <legend>Financeiro</legend>
+          <div class="flex">
+            <label><span>Responsável financeiro</span><input name="financial_responsible" placeholder="Nome completo" required></label>
+          </div>
           <div class="flex">
             <label>
               <span>Plano</span>
