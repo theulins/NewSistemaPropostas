@@ -331,6 +331,7 @@ function validateCompanyForm(partners = []) {
   if (!getFieldValue('phone')) return 'Telefone é obrigatório.';
   if (!hasSelectedServiceArea()) return 'Selecione pelo menos uma área do serviço contratado.';
   if (!partners.length) return 'Inclua ao menos um sócio ou diretor.';
+  if (!getFieldValue('financial_responsible')) return 'Informe o responsável financeiro.';
   return null;
 }
 
@@ -642,6 +643,7 @@ async function populateForm(company) {
     'employees_qty',
     'sector',
     'accounting_office',
+    'financial_responsible',
     'referred_by',
     'note',
     'plan_type',

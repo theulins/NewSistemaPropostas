@@ -243,6 +243,7 @@ export const createCompany = async (req, res) => {
     employees_qty,
     sector,
     accounting_office,
+    financial_responsible,
     referred_by,
     note,
     partners,
@@ -281,7 +282,7 @@ export const createCompany = async (req, res) => {
   const [result] = await pool.query(
     `INSERT INTO companies (
       fantasy_name, corporate_name, cnpj, ie, address, zip, city, state, phone, cel, whatsapp, email, instagram,
-      business_activity, foundation_date, employees_qty, sector, accounting_office, referred_by, note, partners,
+      business_activity, foundation_date, employees_qty, sector, accounting_office, financial_responsible, referred_by, note, partners,
       services_contracted, marketing_authorizations,
       plan_type, value, commission_rate, commission_exempt, due_date, signature_url, status, updated_by
     ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
@@ -304,6 +305,7 @@ export const createCompany = async (req, res) => {
       employees_qty ? Number(employees_qty) : null,
       nullIfEmpty(sector),
       nullIfEmpty(accounting_office),
+      nullIfEmpty(financial_responsible),
       nullIfEmpty(referred_by),
       nullIfEmpty(note),
       partnersJson,
@@ -418,6 +420,7 @@ export const updateCompany = async (req, res) => {
       services_contracted = ?,
       marketing_authorizations = ?,
       accounting_office = ?,
+      financial_responsible = ?,
       referred_by = ?,
       note = ?,
       plan_type = ?,
@@ -450,6 +453,7 @@ export const updateCompany = async (req, res) => {
       pickOptionsJson(services_contracted, existing.services_contracted, SERVICE_OPTIONS),
       pickOptionsJson(marketing_authorizations, existing.marketing_authorizations, MARKETING_OPTIONS),
       pickNullableString(accounting_office, existing.accounting_office),
+      pickNullableString(financial_responsible, existing.financial_responsible),
       pickNullableString(referred_by, existing.referred_by),
       pickNullableString(note, existing.note),
       pickNullableString(plan_type, existing.plan_type),
