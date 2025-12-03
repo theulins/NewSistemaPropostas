@@ -66,7 +66,7 @@ Copiar código
 
 ```bash
 cd server
-cp ../.env.example .env
+cp .env.example .env
 # edite credenciais do banco, JWT_SECRET etc.
 # (Opcional) defina ADMIN_DEFAULT_PASSWORD antes de rodar migrations
 
