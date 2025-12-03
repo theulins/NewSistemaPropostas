@@ -1,14 +1,65 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
-import pool from './pool.js';
+import mysql from 'mysql2/promise';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 const MIGRATIONS_TABLE = 'migrations';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const migrationsDir = path.join(__dirname, '..', 'migrations');
 
+let pool = null;
+
+// 1) Garante que o banco exista (conexão SEM database)
+async function ensureDatabase() {
+  const connection = await mysql.createConnection({
+    host: process.env.DB_HOST,
+    port: Number(process.env.DB_PORT) || 3306,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD
+    // sem "database" aqui!
+  });
+
+  const dbName = process.env.DB_NAME;
+
+  if (!dbName) {
+    throw new Error('DB_NAME não definido no .env');
+  }
+
+  await connection.query(`
+    CREATE DATABASE IF NOT EXISTS \`${dbName}\`
+    CHARACTER SET utf8mb4
+    COLLATE utf8mb4_unicode_ci;
+  `);
+
+  console.log(`✔ Banco '${dbName}' garantido/validado.`);
+  await connection.end();
+}
+
+// 2) Cria (ou reaproveita) um pool já apontando para o banco criado
+async function getPool() {
+  if (!pool) {
+    await ensureDatabase(); // garante o banco antes de criar o pool
+
+    pool = mysql.createPool({
+      host: process.env.DB_HOST,
+      port: Number(process.env.DB_PORT) || 3306,
+      user: process.env.DB_USER,
+      password: process.env.DB_PASSWORD,
+      database: process.env.DB_NAME,
+      connectionLimit: 10,
+      namedPlaceholders: true,
+      timezone: 'Z'
+    });
+  }
+  return pool;
+}
+
 async function ensureMigrationsTable() {
+  const pool = await getPool();
   await pool.query(`
     CREATE TABLE IF NOT EXISTS ${MIGRATIONS_TABLE} (
       id INT AUTO_INCREMENT PRIMARY KEY,
@@ -31,6 +82,7 @@ async function loadMigrationFiles() {
 }
 
 async function getExecutedMigrations() {
+  const pool = await getPool();
   const [rows] = await pool.query(
     `SELECT name FROM ${MIGRATIONS_TABLE} ORDER BY id ASC`
   );
@@ -45,6 +97,7 @@ async function runPendingMigrations(migrationFiles) {
 
   await ensureMigrationsTable();
   const executed = await getExecutedMigrations();
+  const pool = await getPool();
 
   for (const fileName of migrationFiles) {
     if (executed.has(fileName)) {
@@ -56,7 +109,9 @@ async function runPendingMigrations(migrationFiles) {
     const migrationModule = await import(pathToFileURL(filePath).href);
 
     if (typeof migrationModule.up !== 'function') {
-      throw new Error(`Migration ${fileName} não exporta uma função up(connection).`);
+      throw new Error(
+        `Migration ${fileName} não exporta uma função up(connection).`
+      );
     }
 
     const connection = await pool.getConnection();
@@ -84,12 +139,18 @@ async function main() {
   try {
     const migrationFiles = await loadMigrationFiles();
     await runPendingMigrations(migrationFiles);
-    await pool.end();
+
+    if (pool) {
+      await pool.end();
+    }
+
     process.exit(0);
   } catch (error) {
     console.error(error);
     try {
-      await pool.end();
+      if (pool) {
+        await pool.end();
+      }
     } catch (endError) {
       console.error(endError);
     }
